@@ -16,6 +16,13 @@ A tcp logger for [Logstash](http://logstash.net/docs/1.4.2/inputs/tcp)
 | pid         | string   | `process.pid`   |
 | tags        | string[] | `["bunyan"]`    |
 
+### Improvements
+
+- **Performance**: Optimized write operations and SSL certificate loading.
+- **Reliability**: Improved error handling for JSON parsing and backpressure support.
+- **Ordering**: Ensures FIFO (First-In-First-Out) delivery of buffered logs during connection interruptions.
+- **Modernization**: Codebase refactored to ES6 classes.
+
 ## Adding the bunyan-logstash stream to Bunyan
 
 ```

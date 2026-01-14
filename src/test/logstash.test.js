@@ -546,6 +546,7 @@ describe('logstash', () => {
     describe('flush', () => {
       it('Should send all messages and leave queue empty', () => {
         const stream = createStream();
+        stream.canWriteToExternalSocket = true;
         stream.log_queue.push({ message: 'a' });
         stream.log_queue.push({ message: 'b' });
         const sendStub = sandbox.stub(stream, 'sendLog');

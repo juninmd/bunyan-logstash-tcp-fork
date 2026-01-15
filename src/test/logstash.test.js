@@ -211,6 +211,11 @@ describe('logstash', () => {
       const stream = createStream();
       expect(stream).to.be.instanceOf(EventEmitter);
     });
+
+    it('Should throw error if ssl_key file is not found', () => {
+      sandbox.stub(fs, 'readFileSync').throws(new Error('File not found'));
+      expect(() => createStream({ ssl_enable: true, ssl_key: 'invalid' })).to.throw('Failed to load SSL/TLS certificates: File not found');
+    });
   });
 
   describe('LogstashStream', () => {
@@ -573,6 +578,7 @@ describe('logstash', () => {
         stream.send('hello');
         expect(sendLogStub.callCount).to.equal(1);
         expect(sendLogStub.withArgs('hello').callCount).to.equal(1);
+        expect(stream.log_queue.length).to.equal(0);
       });
     });
     describe('send', () => {

@@ -67,12 +67,16 @@ class LogstashStream extends EventEmitter {
     this.ssl_passphrase = options.ssl_passphrase || '';
 
     if (this.ssl_enable) {
-      this.tlsOptions = {
-        key: this.ssl_key ? fs.readFileSync(this.ssl_key) : null,
-        cert: this.ssl_cert ? fs.readFileSync(this.ssl_cert) : null,
-        passphrase: this.ssl_passphrase ? this.ssl_passphrase : null,
-        ca: this.ca ? this.ca.map(filePath => fs.readFileSync(filePath)) : null
-      };
+      try {
+        this.tlsOptions = {
+          key: this.ssl_key ? fs.readFileSync(this.ssl_key) : null,
+          cert: this.ssl_cert ? fs.readFileSync(this.ssl_cert) : null,
+          passphrase: this.ssl_passphrase ? this.ssl_passphrase : null,
+          ca: this.ca ? this.ca.map(filePath => fs.readFileSync(filePath)) : null
+        };
+      } catch (err) {
+        throw new Error(`Failed to load SSL/TLS certificates: ${err.message}`);
+      }
     }
 
     this.cbuffer_size = options.cbuffer_size || 10;
@@ -97,7 +101,6 @@ class LogstashStream extends EventEmitter {
    * @returns {void}
    */
   write(entry) {
-    let level;
     let rec;
 
     if (typeof (entry) === 'string') {
@@ -111,9 +114,7 @@ class LogstashStream extends EventEmitter {
       rec = entry;
     }
 
-    rec = Object.assign({}, rec);
-
-    level = rec.level;
+    let level = rec.level;
 
     if (levels.has(level)) {
       level = levels.get(level);
@@ -124,24 +125,22 @@ class LogstashStream extends EventEmitter {
       message: rec.msg,
       tags: this.tags,
       source: `${this.server}/${this.application}`,
-      level
+      level,
+      pid: this.pid
     };
 
     if (typeof (this.type) === 'string') {
       msg.type = this.type;
     }
 
-    delete rec.time;
-    delete rec.msg;
+    // Copy other properties
+    Object.keys(rec).forEach((key) => {
+      if (key !== 'time' && key !== 'msg' && key !== 'v' && key !== 'level' && key !== 'pid') {
+        msg[key] = rec[key];
+      }
+    });
 
-    // Remove internal bunyan fields that won't mean anything outside of
-    // a bunyan context.
-    delete rec.v;
-    delete rec.level;
-
-    rec.pid = this.pid;
-
-    this.send(JSON.stringify(Object.assign({}, msg, rec), bunyan.safeCycles()));
+    this.send(JSON.stringify(msg, bunyan.safeCycles()));
   }
 
   /**
@@ -252,7 +251,7 @@ class LogstashStream extends EventEmitter {
    * @returns {void}
    */
   sendLog(message) {
-    if (!this.socket.write(`${message}\n`)) {
+    if (this.socket && !this.socket.write(`${message}\n`)) {
       this.canWriteToExternalSocket = false;
     }
   }

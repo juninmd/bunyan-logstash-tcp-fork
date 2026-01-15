@@ -3,112 +3,119 @@
 [![CircleCI](https://circleci.com/gh/transcovo/bunyan-logstash-tcp.svg?style=shield)](https://circleci.com/gh/transcovo/bunyan-logstash-tcp)
 [![codecov](https://codecov.io/gh/transcovo/bunyan-logstash-tcp/branch/master/graph/badge.svg)](https://codecov.io/gh/transcovo/bunyan-logstash-tcp)
 
-A tcp logger for [Logstash](http://logstash.net/docs/1.4.2/inputs/tcp)
+A tcp logger for [Logstash](http://logstash.net/docs/1.4.2/inputs/tcp) that supports SSL/TLS, buffering, and backpressure.
 
-## Configuration options
+## Features
 
-| level       | string   | `"info"`        |
-|-------------|----------|-----------------|
-| server      | string   | `os.hostname()` |
-| host        | string   | `"127.0.0.1"`   |
-| port        | number   | `9999`          |
-| application | string   | `process.title` |
-| pid         | string   | `process.pid`   |
-| tags        | string[] | `["bunyan"]`    |
+- **Performance**: Optimized write operations and minimal object allocation.
+- **Reliability**: Robust error handling for connection issues and JSON parsing.
+- **Backpressure**: Handles TCP backpressure to prevent memory leaks or data loss.
+- **Ordering**: Ensures FIFO (First-In-First-Out) delivery of buffered logs.
+- **SSL/TLS Support**: Secure logging with SSL/TLS.
+- **Modern**: ES6 class-based implementation.
 
-### Improvements
+## Installation
 
-- **Performance**: Optimized write operations and SSL certificate loading.
-- **Reliability**: Improved error handling for JSON parsing and backpressure support.
-- **Ordering**: Ensures FIFO (First-In-First-Out) delivery of buffered logs during connection interruptions.
-- **Modernization**: Codebase refactored to ES6 classes.
-
-## Adding the bunyan-logstash stream to Bunyan
-
+```bash
+npm install bunyan-logstash-tcp-fork
 ```
-var log = bunyan.createLogger({
+
+## Usage
+
+### Basic Usage
+
+```javascript
+const bunyan = require('bunyan');
+const bunyantcp = require('bunyan-logstash-tcp-fork');
+
+const log = bunyan.createLogger({
+  name: 'myapp',
   streams: [
     {
-      type: "raw",
-      stream: require('bunyan-logstash-tcp').createStream({
+      level: 'info',
+      type: 'raw',
+      stream: bunyantcp.createStream({
         host: '127.0.0.1',
-        port: 9908
+        port: 9998
+      })
+    }
+  ]
+});
+
+log.info('Hello Logstash!');
+```
+
+### SSL/TLS Usage
+
+```javascript
+const log = bunyan.createLogger({
+  name: 'myapp',
+  streams: [
+    {
+      level: 'info',
+      type: 'raw',
+      stream: bunyantcp.createStream({
+        host: 'logstash.example.com',
+        port: 9998,
+        ssl_enable: true,
+        ssl_key: '/path/to/client-key.pem',
+        ssl_cert: '/path/to/client-cert.pem',
+        ca: ['/path/to/ca-cert.pem']
       })
     }
   ]
 });
 ```
 
-## Example
+## Configuration Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `host` | `string` | `"127.0.0.1"` | Logstash host address. |
+| `port` | `number` | `9999` | Logstash TCP port. |
+| `level` | `string` | `"info"` | Log level (trace, debug, info, warn, error, fatal). |
+| `server` | `string` | `os.hostname()` | Server name added to log metadata. |
+| `appName` | `string` | `process.title` | Application name added to log metadata. |
+| `pid` | `number` | `process.pid` | Process ID added to log metadata. |
+| `tags` | `string[]` | `["bunyan"]` | Tags to add to the log entry. |
+| `type` | `string` | `undefined` | Log type field. |
+| `ssl_enable` | `boolean` | `false` | Enable SSL/TLS connection. |
+| `ssl_key` | `string` | `""` | Path to SSL key file. |
+| `ssl_cert` | `string` | `""` | Path to SSL certificate file. |
+| `ca` | `string[]` | `[]` | Array of paths to CA certificates. |
+| `ssl_passphrase` | `string` | `""` | Passphrase for SSL key. |
+| `cbuffer_size` | `number` | `10` | Size of the circular buffer for offline logs. |
+| `max_connect_retries` | `number` | `4` | Maximum number of connection retries. |
+| `retry_interval` | `number` | `100` | Interval in ms between retries. |
+
+## Error Handling
+
+The stream emits `error` events. It is recommended to handle these to prevent the application from crashing.
 
 ```javascript
-"use strict";
+const stream = bunyantcp.createStream({ ... });
 
-var bunyan = require('bunyan'),
-    bunyantcp = require('bunyan-logstash-tcp');
-
-var log = bunyan.createLogger({
-    name: 'example',
-    streams: [{
-        level: 'debug',
-        stream: process.stdout
-    },{
-        level: 'debug',
-        type: "raw",
-        stream: bunyantcp.createStream({
-            host: '127.0.0.1',
-            port: 9998
-        })
-    }],
-    level: 'debug'
+stream.on('error', (err) => {
+  console.error('Logstash stream error:', err);
 });
-
-log.debug('test');
-log.error('error test');
 ```
 
 ## Logstash Configuration
 
-Configuration for [Logstash 1.3.3+](http://logstash.net/docs/1.4.2/inputs/tcp):
+Example `logstash.conf`:
 
-```javascript
+```ruby
 input {
-  // config for bunyan udp
-  udp {
-      'port' => "9999"
-  }
-  // config for bunyan tcp
   tcp {
-      'port' => "9998"
+    port => 9998
+    codec => json_lines
   }
+}
+
+output {
+  stdout { codec => rubydebug }
 }
 ```
-
-## Try with logstash locally
-
- - Download logstash from http://logstash.net/
- - Unpack it (tar -zxf logstash-1.4.2.tar.gz)
- - Create a test logstash configuration `logstash.conf`
-
-```code
-input {
-  stdin { 
-    type => "stdin-type"
-  }
-  udp {
-    port => "9999"
-  }
-  tcp {
-    port => "9998"
-  }
-}
-output { 
-  stdout {}
-}
-```
-
- - Run `bin/logstash agent -f logstash.conf
- - Run `node example/log.js`
 
 ## Credits
 

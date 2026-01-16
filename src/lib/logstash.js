@@ -1,10 +1,10 @@
-const bunyan = require('bunyan');
 const net = require('net');
 const fs = require('fs');
 const os = require('os');
 const tls = require('tls');
 const CBuffer = require('CBuffer');
 const EventEmitter = require('events').EventEmitter;
+const safeStringify = require('fast-safe-stringify');
 
 const levels = new Map([
   [10, 'trace'],
@@ -121,7 +121,7 @@ class LogstashStream extends EventEmitter {
     }
 
     const msg = {
-      '@timestamp': new Date(rec.time).toISOString(),
+      '@timestamp': rec.time instanceof Date ? rec.time.toISOString() : new Date(rec.time).toISOString(),
       message: rec.msg,
       tags: this.tags,
       source: `${this.server}/${this.application}`,
@@ -140,7 +140,7 @@ class LogstashStream extends EventEmitter {
       }
     });
 
-    this.send(JSON.stringify(msg, bunyan.safeCycles()));
+    this.send(safeStringify(msg));
   }
 
   /**
@@ -152,28 +152,40 @@ class LogstashStream extends EventEmitter {
     this.retries += 1;
     this.connecting = true;
     if (this.ssl_enable) {
-      this.socket = tls.connect(this.port, this.host, this.tlsOptions, () => {
-        if (this.socket) {
-          this.socket.setEncoding('UTF-8');
-          this.announce();
-        }
+      try {
+        this.socket = tls.connect(this.port, this.host, this.tlsOptions, () => {
+          if (this.socket) {
+            this.socket.setEncoding('UTF-8');
+            this.announce();
+          }
+          this.connecting = false;
+        });
+      } catch (e) {
+        this.socket = null;
         this.connecting = false;
-      });
+        process.nextTick(() => this.emit('error', e));
+        return;
+      }
     } else {
       this.socket = new net.Socket();
     }
+
+    if (!this.socket) return;
+
     this.socket.unref();
 
     this.socket.on('error', (err) => {
       this.connecting = false;
       this.connected = false;
-      this.socket.destroy();
+      if (this.socket) {
+        this.socket.destroy();
+      }
       this.socket = null;
       this.emit('error', err);
     });
 
     this.socket.on('timeout', () => {
-      if (this.socket.readyState !== 'open') {
+      if (this.socket && this.socket.readyState !== 'open') {
         this.socket.destroy();
       }
       this.emit('timeout');

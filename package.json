@@ -15,7 +15,8 @@
     "logger"
   ],
   "dependencies": {
-    "CBuffer": "2.0.0"
+    "CBuffer": "2.0.0",
+    "fast-safe-stringify": "^2.1.1"
   },
   "peerDependencies": {
     "bunyan": "1.x"

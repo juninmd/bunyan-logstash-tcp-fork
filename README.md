@@ -7,8 +7,8 @@ A tcp logger for [Logstash](http://logstash.net/docs/1.4.2/inputs/tcp) that supp
 
 ## Features
 
-- **Performance**: Optimized write operations and minimal object allocation.
-- **Reliability**: Robust error handling for connection issues and JSON parsing.
+- **Performance**: Optimized write operations, minimal object allocation, and faster JSON serialization using `fast-safe-stringify`.
+- **Reliability**: Robust error handling for connection issues, TLS configuration, and JSON parsing.
 - **Backpressure**: Handles TCP backpressure to prevent memory leaks or data loss.
 - **Ordering**: Ensures FIFO (First-In-First-Out) delivery of buffered logs.
 - **SSL/TLS Support**: Secure logging with SSL/TLS.

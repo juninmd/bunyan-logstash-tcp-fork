@@ -362,9 +362,34 @@ describe('logstash', () => {
         const payload = JSON.parse(args[0]);
         expect(payload).to.have.property('pid', 42);
       });
+
+      it('Should handle Date object in rec.time', () => {
+        const stream = createStream({});
+        const sendStub = sandbox.stub(stream, 'send');
+        const date = new Date('2023-01-01T00:00:00.000Z');
+
+        stream.write({ time: date, msg: 'test' });
+
+        expect(sendStub.callCount).to.eql(1);
+        const args = sendStub.getCall(0).args;
+        const payload = JSON.parse(args[0]);
+        expect(payload).to.have.property('@timestamp', '2023-01-01T00:00:00.000Z');
+      });
     });
 
     describe('connect', () => {
+      it('Should catch and emit error asynchronously if tls.connect throws', (done) => {
+        sandbox.stub(tls, 'connect').throws(new Error('TLS error'));
+
+        const stream = createStream({ ssl_enable: true });
+
+        stream.on('error', (err) => {
+          expect(err).to.be.instanceOf(Error);
+          expect(err.message).to.equal('TLS error');
+          done();
+        });
+      });
+
       it('Should create non tls socket when ssl_enable is false', () => {
         const tlsConnectSpy = sandbox.spy(tls, 'connect');
 

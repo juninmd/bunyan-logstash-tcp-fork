@@ -59,6 +59,9 @@ class LogstashStream extends EventEmitter {
     this.tags = options.tags || ['bunyan'];
     this.type = options.type;
 
+    // Pre-compute source to avoid string concatenation on every write
+    this.source = `${this.server}/${this.application}`;
+
     // ssl
     this.ssl_enable = options.ssl_enable || false;
     this.ssl_key = options.ssl_key || '';
@@ -124,7 +127,7 @@ class LogstashStream extends EventEmitter {
       '@timestamp': rec.time instanceof Date ? rec.time.toISOString() : new Date(rec.time).toISOString(),
       message: rec.msg,
       tags: this.tags,
-      source: `${this.server}/${this.application}`,
+      source: this.source,
       level,
       pid: this.pid
     };
@@ -135,9 +138,11 @@ class LogstashStream extends EventEmitter {
 
     // Copy other properties
     Object.keys(rec).forEach((key) => {
-      if (key !== 'time' && key !== 'msg' && key !== 'v' && key !== 'level' && key !== 'pid') {
-        msg[key] = rec[key];
+      // Micro-optimization: check common exclusions first
+      if (key === 'msg' || key === 'time' || key === 'v' || key === 'level' || key === 'pid') {
+        return;
       }
+      msg[key] = rec[key];
     });
 
     this.send(safeStringify(msg));
@@ -240,19 +245,38 @@ class LogstashStream extends EventEmitter {
    * Flushes the queue, sending all messages that have not been sent yet to the remote
    * destination.
    *
+   * It uses a batching mechanism to reduce the number of system calls.
+   *
    * @returns {void}
    */
   flush() {
-    let message = this.log_queue.shift();
-    while (message) {
-      this.sendLog(message.message);
+    if (!this.connected) return;
 
-      if (!this.canWriteToExternalSocket) {
-        // If backpressure happens, the data is already in Node's buffer,
-        // so we don't need to put it back. We just stop flushing.
-        break;
+    const MAX_BATCH_SIZE = 16 * 1024; // 16KB batch size limit
+    let chunk = '';
+
+    // Check if we have items in the queue
+    while (this.log_queue.length > 0) {
+      const item = this.log_queue.shift();
+      const message = item.message;
+
+      chunk += `${message}\n`;
+
+      // If the chunk exceeds the batch size, write it to the socket
+      if (chunk.length >= MAX_BATCH_SIZE) {
+        if (!this.socket.write(chunk)) {
+          this.canWriteToExternalSocket = false;
+          return;
+        }
+        chunk = '';
       }
-      message = this.log_queue.shift();
+    }
+
+    // Write any remaining data
+    if (chunk.length > 0) {
+      if (!this.socket.write(chunk)) {
+        this.canWriteToExternalSocket = false;
+      }
     }
   }
 
@@ -275,9 +299,8 @@ class LogstashStream extends EventEmitter {
    * @returns {void}
    */
   send(message) {
-    // Always use the queue to ensure order if there are pending messages.
-    // If the queue is empty and we can write, we could optimize, but it's safer to just push/flush.
-    // However, for performance, if queue is empty and canWrite, send directly.
+    // If the queue is empty and we are connected and can write, send directly.
+    // This avoids unnecessary buffering and shifting.
     if (this.log_queue.length === 0 && this.connected && this.canWriteToExternalSocket) {
       this.sendLog(message);
     } else {

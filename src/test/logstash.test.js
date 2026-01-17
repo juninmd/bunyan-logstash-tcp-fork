@@ -47,6 +47,7 @@ class MockSocket {
 
   write(text) {
     this.content += text;
+    return true;
   }
 
   dispatchEvent(event, ...params) {
@@ -574,16 +575,43 @@ describe('logstash', () => {
       });
     });
     describe('flush', () => {
-      it('Should send all messages and leave queue empty', () => {
+      it('Should send all messages in one batch and leave queue empty', () => {
         const stream = createStream();
+        stream.connected = true;
         stream.canWriteToExternalSocket = true;
         stream.log_queue.push({ message: 'a' });
         stream.log_queue.push({ message: 'b' });
-        const sendStub = sandbox.stub(stream, 'sendLog');
+
+        const socketWriteSpy = sandbox.spy(stream.socket, 'write');
+
         stream.flush();
-        expect(sendStub.callCount).to.equal(2);
-        expect(sendStub.withArgs('a').callCount).to.equal(1);
-        expect(sendStub.withArgs('b').callCount).to.equal(1);
+        expect(socketWriteSpy.callCount).to.equal(1);
+        expect(socketWriteSpy.withArgs('a\nb\n').callCount).to.equal(1);
+        expect(stream.log_queue.toArray()).to.have.length(0);
+      });
+
+      it('Should batch messages and send in chunks when exceeding MAX_BATCH_SIZE', () => {
+        const stream = createStream({ cbuffer_size: 100 });
+        stream.connected = true;
+        stream.canWriteToExternalSocket = true;
+
+        // 16KB batch size. Let's create messages of 1KB each.
+        const msg = 'x'.repeat(1024);
+        // Push 20 messages. 20KB total.
+        for (let i = 0; i < 20; i += 1) {
+          stream.log_queue.push({ message: msg });
+        }
+
+        const socketWriteSpy = sandbox.spy(stream.socket, 'write');
+
+        stream.flush();
+
+        // 20 messages.
+        // 1 message = 1024 chars + 1 newline = 1025 bytes.
+        // 16 messages * 1025 bytes = 16400 bytes >= 16384 bytes (16KB).
+        // So first batch should be written.
+        // Then remaining 4 messages.
+        expect(socketWriteSpy.callCount).to.equal(2);
         expect(stream.log_queue.toArray()).to.have.length(0);
       });
     });
@@ -618,4 +646,3 @@ describe('logstash', () => {
     });
   });
 });
-

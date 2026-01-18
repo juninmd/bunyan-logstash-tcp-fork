@@ -137,13 +137,13 @@ class LogstashStream extends EventEmitter {
     }
 
     // Copy other properties
-    Object.keys(rec).forEach((key) => {
-      // Micro-optimization: check common exclusions first
-      if (key === 'msg' || key === 'time' || key === 'v' || key === 'level' || key === 'pid') {
-        return;
+    const keys = Object.keys(rec);
+    for (let i = 0; i < keys.length; i += 1) {
+      const key = keys[i];
+      if (key !== 'msg' && key !== 'time' && key !== 'v' && key !== 'level' && key !== 'pid') {
+        msg[key] = rec[key];
       }
-      msg[key] = rec[key];
-    });
+    }
 
     this.send(safeStringify(msg));
   }
@@ -156,30 +156,13 @@ class LogstashStream extends EventEmitter {
   connect() {
     this.retries += 1;
     this.connecting = true;
-    if (this.ssl_enable) {
-      try {
-        this.socket = tls.connect(this.port, this.host, this.tlsOptions, () => {
-          if (this.socket) {
-            this.socket.setEncoding('UTF-8');
-            this.announce();
-          }
-          this.connecting = false;
-        });
-      } catch (e) {
-        this.socket = null;
-        this.connecting = false;
-        process.nextTick(() => this.emit('error', e));
-        return;
-      }
-    } else {
-      this.socket = new net.Socket();
-    }
 
-    if (!this.socket) return;
+    const onConnectCallback = () => {
+      this.connecting = false;
+      this.announce();
+    };
 
-    this.socket.unref();
-
-    this.socket.on('error', (err) => {
+    const onError = (err) => {
       this.connecting = false;
       this.connected = false;
       if (this.socket) {
@@ -187,6 +170,37 @@ class LogstashStream extends EventEmitter {
       }
       this.socket = null;
       this.emit('error', err);
+    };
+
+    try {
+      if (this.ssl_enable) {
+        this.socket = tls.connect(this.port, this.host, this.tlsOptions, () => {
+          if (this.socket) {
+            this.socket.setEncoding('UTF-8');
+          }
+          onConnectCallback();
+        });
+      } else {
+        this.socket = new net.Socket();
+        this.socket.connect(this.port, this.host, onConnectCallback);
+      }
+    } catch (e) {
+      this.socket = null;
+      this.connecting = false;
+      process.nextTick(() => this.emit('error', e));
+      return;
+    }
+
+    if (!this.socket) return;
+
+    this.socket.unref();
+    this.socket.on('error', onError);
+
+    // Explicit connect listener to match old behavior/tests and handle TCP connect event
+    this.socket.on('connect', () => {
+      this.retries = 0;
+      this.canWriteToExternalSocket = true;
+      this.emit('connect');
     });
 
     this.socket.on('timeout', () => {
@@ -194,12 +208,6 @@ class LogstashStream extends EventEmitter {
         this.socket.destroy();
       }
       this.emit('timeout');
-    });
-
-    this.socket.on('connect', () => {
-      this.retries = 0;
-      this.canWriteToExternalSocket = true;
-      this.emit('connect');
     });
 
     this.socket.on('drain', () => {
@@ -222,13 +230,6 @@ class LogstashStream extends EventEmitter {
       }
       this.emit('close');
     });
-
-    if (!this.ssl_enable) {
-      this.socket.connect(this.port, this.host, () => {
-        this.announce();
-        this.connecting = false;
-      });
-    }
   }
 
   /**
@@ -253,28 +254,33 @@ class LogstashStream extends EventEmitter {
     if (!this.connected) return;
 
     const MAX_BATCH_SIZE = 16 * 1024; // 16KB batch size limit
-    let chunk = '';
+    const batch = [];
+    let batchSize = 0;
 
     // Check if we have items in the queue
     while (this.log_queue.length > 0) {
       const item = this.log_queue.shift();
       const message = item.message;
+      const entry = `${message}\n`;
 
-      chunk += `${message}\n`;
+      batch.push(entry);
+      batchSize += entry.length;
 
       // If the chunk exceeds the batch size, write it to the socket
-      if (chunk.length >= MAX_BATCH_SIZE) {
-        if (!this.socket.write(chunk)) {
+      if (batchSize >= MAX_BATCH_SIZE) {
+        if (!this.socket.write(batch.join(''))) {
           this.canWriteToExternalSocket = false;
+          // We can't write more right now, waiting for drain
           return;
         }
-        chunk = '';
+        batch.length = 0;
+        batchSize = 0;
       }
     }
 
     // Write any remaining data
-    if (chunk.length > 0) {
-      if (!this.socket.write(chunk)) {
+    if (batch.length > 0) {
+      if (!this.socket.write(batch.join(''))) {
         this.canWriteToExternalSocket = false;
       }
     }

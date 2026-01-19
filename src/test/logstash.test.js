@@ -45,6 +45,11 @@ class MockSocket {
     this.encoding = encoding;
   }
 
+  setKeepAlive(enable, initialDelay) {
+    this.keepAlive = enable;
+    this.keepAliveDelay = initialDelay;
+  }
+
   write(text) {
     this.content += text;
     return true;

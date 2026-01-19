@@ -10,6 +10,7 @@ A tcp logger for [Logstash](http://logstash.net/docs/1.4.2/inputs/tcp) that supp
 - **Performance**: Optimized write operations, minimal object allocation, and faster JSON serialization using `fast-safe-stringify`.
 - **Batching**: Reduces system calls by batching log messages (up to 16KB chunks) before writing to the socket.
 - **Reliability**: Robust error handling for connection issues, TLS configuration, and JSON parsing. Automatic reconnection logic.
+- **Keep-Alive**: Enables TCP Keep-Alive to detect dead connections.
 - **Backpressure**: Handles TCP backpressure to prevent memory leaks or data loss.
 - **Ordering**: Ensures FIFO (First-In-First-Out) delivery of buffered logs.
 - **SSL/TLS Support**: Secure logging with SSL/TLS.

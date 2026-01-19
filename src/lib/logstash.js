@@ -15,6 +15,16 @@ const levels = new Map([
   [60, 'fatal']
 ]);
 
+// Keys that are manually constructed in the msg object and should be skipped
+// in the generic copy loop
+const IGNORED_KEYS = {
+  msg: true,
+  time: true,
+  v: true,
+  level: true,
+  pid: true
+};
+
 /**
  * This class implements the bunyan stream contract with a stream that
  * sends data to logstash.
@@ -45,29 +55,29 @@ class LogstashStream extends EventEmitter {
    */
   constructor(options) {
     super();
-    options = options || {};
+    const opts = options || {};
 
     this.client = null;
 
     this.name = 'bunyan';
-    this.level = options.level || 'info';
-    this.server = options.server || os.hostname();
-    this.host = options.host || '127.0.0.1';
-    this.port = options.port || 9999;
-    this.application = options.appName || process.title;
-    this.pid = options.pid || process.pid;
-    this.tags = options.tags || ['bunyan'];
-    this.type = options.type;
+    this.level = opts.level || 'info';
+    this.server = opts.server || os.hostname();
+    this.host = opts.host || '127.0.0.1';
+    this.port = opts.port || 9999;
+    this.application = opts.appName || process.title;
+    this.pid = opts.pid || process.pid;
+    this.tags = opts.tags || ['bunyan'];
+    this.type = opts.type;
 
     // Pre-compute source to avoid string concatenation on every write
     this.source = `${this.server}/${this.application}`;
 
     // ssl
-    this.ssl_enable = options.ssl_enable || false;
-    this.ssl_key = options.ssl_key || '';
-    this.ssl_cert = options.ssl_cert || '';
-    this.ca = options.ca || '';
-    this.ssl_passphrase = options.ssl_passphrase || '';
+    this.ssl_enable = opts.ssl_enable || false;
+    this.ssl_key = opts.ssl_key || '';
+    this.ssl_cert = opts.ssl_cert || '';
+    this.ca = opts.ca || '';
+    this.ssl_passphrase = opts.ssl_passphrase || '';
 
     if (this.ssl_enable) {
       try {
@@ -82,7 +92,7 @@ class LogstashStream extends EventEmitter {
       }
     }
 
-    this.cbuffer_size = options.cbuffer_size || 10;
+    this.cbuffer_size = opts.cbuffer_size || 10;
 
     // Connection state
     this.log_queue = new CBuffer(this.cbuffer_size);
@@ -91,8 +101,10 @@ class LogstashStream extends EventEmitter {
     this.retries = -1;
     this.canWriteToExternalSocket = false;
 
-    this.max_connect_retries = (typeof options.max_connect_retries === 'number') ? options.max_connect_retries : 4;
-    this.retry_interval = options.retry_interval || 100;
+    this.max_connect_retries = (typeof opts.max_connect_retries === 'number')
+      ? opts.max_connect_retries
+      : 4;
+    this.retry_interval = opts.retry_interval || 100;
 
     this.connect();
   }
@@ -140,7 +152,7 @@ class LogstashStream extends EventEmitter {
     const keys = Object.keys(rec);
     for (let i = 0; i < keys.length; i += 1) {
       const key = keys[i];
-      if (key !== 'msg' && key !== 'time' && key !== 'v' && key !== 'level' && key !== 'pid') {
+      if (!IGNORED_KEYS[key]) {
         msg[key] = rec[key];
       }
     }
@@ -177,12 +189,18 @@ class LogstashStream extends EventEmitter {
         this.socket = tls.connect(this.port, this.host, this.tlsOptions, () => {
           if (this.socket) {
             this.socket.setEncoding('UTF-8');
+            this.socket.setKeepAlive(true, 60000); // Keep connection alive
           }
           onConnectCallback();
         });
       } else {
         this.socket = new net.Socket();
-        this.socket.connect(this.port, this.host, onConnectCallback);
+        this.socket.connect(this.port, this.host, () => {
+          if (this.socket) {
+            this.socket.setKeepAlive(true, 60000);
+          }
+          onConnectCallback();
+        });
       }
     } catch (e) {
       this.socket = null;

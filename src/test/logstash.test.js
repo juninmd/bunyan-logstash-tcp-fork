@@ -226,6 +226,14 @@ describe('logstash', () => {
 
   describe('LogstashStream', () => {
     describe('write', () => {
+      it('Should not do anything if stream is silent', () => {
+        const stream = createStream();
+        stream.silent = true;
+        const sendStub = sandbox.stub(stream, 'send');
+        stream.write({ msg: 'hello' });
+        expect(sendStub.callCount).to.eql(0);
+      });
+
       it('Should call the send method', () => {
         const stream = createStream({
           tags: ['tag1', 'tag2'],
@@ -584,8 +592,8 @@ describe('logstash', () => {
         const stream = createStream();
         stream.connected = true;
         stream.canWriteToExternalSocket = true;
-        stream.log_queue.push({ message: 'a' });
-        stream.log_queue.push({ message: 'b' });
+        stream.log_queue.push('a');
+        stream.log_queue.push('b');
 
         const socketWriteSpy = sandbox.spy(stream.socket, 'write');
 
@@ -604,7 +612,7 @@ describe('logstash', () => {
         const msg = 'x'.repeat(1024);
         // Push 20 messages. 20KB total.
         for (let i = 0; i < 20; i += 1) {
-          stream.log_queue.push({ message: msg });
+          stream.log_queue.push(msg);
         }
 
         const socketWriteSpy = sandbox.spy(stream.socket, 'write');
@@ -646,7 +654,7 @@ describe('logstash', () => {
         const sendLogStub = sandbox.stub(stream, 'sendLog');
         stream.send('hello');
         expect(sendLogStub.callCount).to.equal(0);
-        expect(stream.log_queue.pop()).to.eql({ message: 'hello' });
+        expect(stream.log_queue.pop()).to.eql('hello');
       });
     });
   });

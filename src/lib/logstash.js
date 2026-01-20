@@ -30,6 +30,10 @@ const IGNORED_KEYS = {
  * sends data to logstash.
  *
  * @extends EventEmitter
+ * @fires LogstashStream#connect
+ * @fires LogstashStream#close
+ * @fires LogstashStream#error
+ * @fires LogstashStream#timeout
  */
 class LogstashStream extends EventEmitter {
   /**
@@ -116,6 +120,10 @@ class LogstashStream extends EventEmitter {
    * @returns {void}
    */
   write(entry) {
+    if (this.silent) {
+      return;
+    }
+
     let rec;
 
     if (typeof (entry) === 'string') {
@@ -243,6 +251,7 @@ class LogstashStream extends EventEmitter {
           }, this.retry_interval).unref();
         }
       } else {
+        // Stop retrying, clear queue and go silent to prevent memory leaks
         this.log_queue = new CBuffer(this.cbuffer_size);
         this.silent = true;
       }
@@ -277,12 +286,12 @@ class LogstashStream extends EventEmitter {
 
     // Check if we have items in the queue
     while (this.log_queue.length > 0) {
-      const item = this.log_queue.shift();
-      const message = item.message;
+      const message = this.log_queue.shift();
       const entry = `${message}\n`;
+      const entrySize = Buffer.byteLength(entry);
 
       batch.push(entry);
-      batchSize += entry.length;
+      batchSize += entrySize;
 
       // If the chunk exceeds the batch size, write it to the socket
       if (batchSize >= MAX_BATCH_SIZE) {
@@ -328,9 +337,7 @@ class LogstashStream extends EventEmitter {
     if (this.log_queue.length === 0 && this.connected && this.canWriteToExternalSocket) {
       this.sendLog(message);
     } else {
-      this.log_queue.push({
-        message
-      });
+      this.log_queue.push(message);
       if (this.connected && this.canWriteToExternalSocket) {
         this.flush();
       }

@@ -389,6 +389,21 @@ describe('logstash', () => {
         const payload = JSON.parse(args[0]);
         expect(payload).to.have.property('@timestamp', '2023-01-01T00:00:00.000Z');
       });
+
+      it('Should handle invalid Date in rec.time', () => {
+        const stream = createStream({});
+        const sendStub = sandbox.stub(stream, 'send');
+        const invalidDate = { time: 'invalid-date', msg: 'test' };
+
+        stream.write(invalidDate);
+
+        expect(sendStub.callCount).to.eql(1);
+        const args = sendStub.getCall(0).args;
+        const payload = JSON.parse(args[0]);
+        expect(payload).to.have.property('@timestamp');
+        // Should default to current time (valid date)
+        expect(Number.isNaN(Date.parse(payload['@timestamp']))).to.equal(false);
+      });
     });
 
     describe('connect', () => {
@@ -627,12 +642,40 @@ describe('logstash', () => {
         expect(socketWriteSpy.callCount).to.equal(2);
         expect(stream.log_queue.toArray()).to.have.length(0);
       });
+
+      it('Should handle socket write errors gracefully', () => {
+        const stream = createStream();
+        stream.connected = true;
+        stream.canWriteToExternalSocket = true;
+        stream.log_queue.push('a');
+
+        sandbox.stub(stream.socket, 'write').throws(new Error('Write error'));
+        const emitSpy = sandbox.spy(stream, 'emit');
+        stream.on('error', () => {});
+
+        stream.flush();
+
+        expect(emitSpy.calledWith('error')).to.equal(true);
+        const err = emitSpy.args.find(arg => arg[0] === 'error')[1];
+        expect(err.message).to.equal('Write error');
+      });
     });
     describe('sendLog', () => {
       it('Should write log to the socket', () => {
         const stream = createStream();
         stream.sendLog('hello');
         expect(stream.socket.content).to.equal('hello\n');
+      });
+
+      it('Should handle socket write errors gracefully', () => {
+        const stream = createStream();
+        sandbox.stub(stream.socket, 'write').throws(new Error('Write error'));
+        const emitSpy = sandbox.spy(stream, 'emit');
+        stream.on('error', () => {});
+
+        stream.sendLog('hello');
+
+        expect(emitSpy.calledWith('error')).to.equal(true);
       });
     });
     describe('send', () => {

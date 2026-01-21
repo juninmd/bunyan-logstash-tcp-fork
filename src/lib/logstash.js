@@ -143,8 +143,18 @@ class LogstashStream extends EventEmitter {
       level = levels.get(level);
     }
 
+    let timestamp;
+    try {
+      timestamp = rec.time instanceof Date
+        ? rec.time.toISOString()
+        : new Date(rec.time).toISOString();
+    } catch (error) {
+      // If time is invalid, default to now
+      timestamp = new Date().toISOString();
+    }
+
     const msg = {
-      '@timestamp': rec.time instanceof Date ? rec.time.toISOString() : new Date(rec.time).toISOString(),
+      '@timestamp': timestamp,
       message: rec.msg,
       tags: this.tags,
       source: this.source,
@@ -166,6 +176,38 @@ class LogstashStream extends EventEmitter {
     }
 
     this.send(safeStringify(msg));
+  }
+
+  /**
+   * Helper to create a TCP connection
+   * @param {function} onConnectCallback Callback called when connection is established
+   * @returns {void}
+   * @private
+   */
+  connectTCP(onConnectCallback) {
+    this.socket = new net.Socket();
+    this.socket.connect(this.port, this.host, () => {
+      if (this.socket) {
+        this.socket.setKeepAlive(true, 60000);
+      }
+      onConnectCallback();
+    });
+  }
+
+  /**
+   * Helper to create a TLS connection
+   * @param {function} onConnectCallback Callback called when connection is established
+   * @returns {void}
+   * @private
+   */
+  connectTLS(onConnectCallback) {
+    this.socket = tls.connect(this.port, this.host, this.tlsOptions, () => {
+      if (this.socket) {
+        this.socket.setEncoding('UTF-8');
+        this.socket.setKeepAlive(true, 60000); // Keep connection alive
+      }
+      onConnectCallback();
+    });
   }
 
   /**
@@ -194,21 +236,9 @@ class LogstashStream extends EventEmitter {
 
     try {
       if (this.ssl_enable) {
-        this.socket = tls.connect(this.port, this.host, this.tlsOptions, () => {
-          if (this.socket) {
-            this.socket.setEncoding('UTF-8');
-            this.socket.setKeepAlive(true, 60000); // Keep connection alive
-          }
-          onConnectCallback();
-        });
+        this.connectTLS(onConnectCallback);
       } else {
-        this.socket = new net.Socket();
-        this.socket.connect(this.port, this.host, () => {
-          if (this.socket) {
-            this.socket.setKeepAlive(true, 60000);
-          }
-          onConnectCallback();
-        });
+        this.connectTCP(onConnectCallback);
       }
     } catch (e) {
       this.socket = null;
@@ -295,9 +325,14 @@ class LogstashStream extends EventEmitter {
 
       // If the chunk exceeds the batch size, write it to the socket
       if (batchSize >= MAX_BATCH_SIZE) {
-        if (!this.socket.write(batch.join(''))) {
-          this.canWriteToExternalSocket = false;
-          // We can't write more right now, waiting for drain
+        try {
+          if (!this.socket.write(batch.join(''))) {
+            this.canWriteToExternalSocket = false;
+            // We can't write more right now, waiting for drain
+            return;
+          }
+        } catch (e) {
+          this.emit('error', e);
           return;
         }
         batch.length = 0;
@@ -307,8 +342,12 @@ class LogstashStream extends EventEmitter {
 
     // Write any remaining data
     if (batch.length > 0) {
-      if (!this.socket.write(batch.join(''))) {
-        this.canWriteToExternalSocket = false;
+      try {
+        if (!this.socket.write(batch.join(''))) {
+          this.canWriteToExternalSocket = false;
+        }
+      } catch (e) {
+        this.emit('error', e);
       }
     }
   }
@@ -320,8 +359,14 @@ class LogstashStream extends EventEmitter {
    * @returns {void}
    */
   sendLog(message) {
-    if (this.socket && !this.socket.write(`${message}\n`)) {
-      this.canWriteToExternalSocket = false;
+    if (this.socket) {
+      try {
+        if (!this.socket.write(`${message}\n`)) {
+          this.canWriteToExternalSocket = false;
+        }
+      } catch (e) {
+        this.emit('error', e);
+      }
     }
   }
 

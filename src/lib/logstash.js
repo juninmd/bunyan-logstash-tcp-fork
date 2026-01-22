@@ -114,7 +114,7 @@ class LogstashStream extends EventEmitter {
   }
 
   /**
-   * Writes a log entry to the steam.
+   * Writes a log entry to the stream.
    *
    * @param {object|string} entry The entry to write.
    * @returns {void}
@@ -145,9 +145,13 @@ class LogstashStream extends EventEmitter {
 
     let timestamp;
     try {
-      timestamp = rec.time instanceof Date
-        ? rec.time.toISOString()
-        : new Date(rec.time).toISOString();
+      if (rec.time instanceof Date) {
+        timestamp = rec.time.toISOString();
+      } else if (typeof rec.time === 'string') {
+        timestamp = new Date(rec.time).toISOString();
+      } else {
+        timestamp = new Date(rec.time).toISOString();
+      }
     } catch (error) {
       // If time is invalid, default to now
       timestamp = new Date().toISOString();
@@ -179,8 +183,9 @@ class LogstashStream extends EventEmitter {
   }
 
   /**
-   * Helper to create a TCP connection
-   * @param {function} onConnectCallback Callback called when connection is established
+   * Helper to create a TCP connection.
+   *
+   * @param {function} onConnectCallback Callback called when connection is established.
    * @returns {void}
    * @private
    */
@@ -195,8 +200,9 @@ class LogstashStream extends EventEmitter {
   }
 
   /**
-   * Helper to create a TLS connection
-   * @param {function} onConnectCallback Callback called when connection is established
+   * Helper to create a TLS connection.
+   *
+   * @param {function} onConnectCallback Callback called when connection is established.
    * @returns {void}
    * @private
    */
@@ -318,7 +324,11 @@ class LogstashStream extends EventEmitter {
     while (this.log_queue.length > 0) {
       const message = this.log_queue.shift();
       const entry = `${message}\n`;
-      const entrySize = Buffer.byteLength(entry);
+      // Optimization: Use string length as proxy for byte length.
+      // It is significantly faster than Buffer.byteLength().
+      // For ASCII it is accurate. For multibyte, it underestimates,
+      // which is fine as 16KB is just a soft limit for batching.
+      const entrySize = entry.length;
 
       batch.push(entry);
       batchSize += entrySize;

@@ -56,6 +56,8 @@ class LogstashStream extends EventEmitter {
    * @param {number} [options.cbuffer_size=10] Size of the circular buffer.
    * @param {number} [options.max_connect_retries=4] Maximum number of connection retries.
    * @param {number} [options.retry_interval=100] Retry interval in ms.
+   * @param {number} [options.retry_min=100] Minimum retry interval in ms.
+   * @param {number} [options.retry_max=10000] Maximum retry interval in ms.
    */
   constructor(options) {
     super();
@@ -109,6 +111,8 @@ class LogstashStream extends EventEmitter {
       ? opts.max_connect_retries
       : 4;
     this.retry_interval = opts.retry_interval || 100;
+    this.retry_min = opts.retry_min || this.retry_interval || 100;
+    this.retry_max = opts.retry_max || 10000;
 
     this.connect();
   }
@@ -150,7 +154,7 @@ class LogstashStream extends EventEmitter {
       } else if (typeof rec.time === 'string') {
         timestamp = new Date(rec.time).toISOString();
       } else {
-        timestamp = new Date(rec.time).toISOString();
+        timestamp = new Date().toISOString();
       }
     } catch (error) {
       // If time is invalid, default to now
@@ -282,9 +286,13 @@ class LogstashStream extends EventEmitter {
 
       if (this.max_connect_retries < 0 || this.retries < this.max_connect_retries) {
         if (!this.connecting) {
+          const delay = Math.min(
+            this.retry_max,
+            this.retry_min * (2 ** this.retries)
+          );
           setTimeout(() => {
             this.connect();
-          }, this.retry_interval).unref();
+          }, delay).unref();
         }
       } else {
         // Stop retrying, clear queue and go silent to prevent memory leaks

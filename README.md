@@ -88,7 +88,9 @@ const log = bunyan.createLogger({
 | `ssl_passphrase` | `string` | `""` | Passphrase for SSL key. |
 | `cbuffer_size` | `number` | `10` | Size of the circular buffer for offline logs. |
 | `max_connect_retries` | `number` | `4` | Maximum number of connection retries. |
-| `retry_interval` | `number` | `100` | Interval in ms between retries. |
+| `retry_interval` | `number` | `100` | (Deprecated) Interval in ms between retries. Use `retry_min` instead. |
+| `retry_min` | `number` | `100` | Minimum interval in ms between retries (start of exponential backoff). |
+| `retry_max` | `number` | `10000` | Maximum interval in ms between retries. |
 
 ## Error Handling
 

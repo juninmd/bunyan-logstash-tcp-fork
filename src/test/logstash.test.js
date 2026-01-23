@@ -601,6 +601,87 @@ describe('logstash', () => {
         expect(stream.log_queue !== oldLogQueue);
         expect(stream).to.have.property('silent', true);
       });
+
+      it('Should increase retry interval exponentially', () => {
+        const clock = sandbox.useFakeTimers();
+        sandbox.stub(tls, 'connect').callsFake(() => new MockSocket());
+
+        const stream = createStream({
+          ssl_enable: true,
+          max_connect_retries: 10,
+          retry_min: 100,
+          retry_max: 10000
+        });
+
+        const connectSpy = sandbox.spy(stream, 'connect');
+
+        // Initial state: constructor called connect() -> retries=0 (after increment from -1)
+        // We simulate a close event.
+        stream.connecting = false;
+        stream.retries = 0;
+
+        // 1st Retry: retries=0. Delay = 100 * 2^0 = 100ms.
+        stream.socket.dispatchEvent('close');
+        clock.tick(99);
+        expect(connectSpy.called).to.equal(false);
+        clock.tick(1);
+        expect(connectSpy.calledOnce).to.equal(true);
+
+        // connect() called. retries becomes 1.
+        // We simulate another failure/close.
+        connectSpy.reset();
+        stream.connecting = false;
+
+        // 2nd Retry: retries=1. Delay = 100 * 2^1 = 200ms.
+        stream.socket.dispatchEvent('close');
+        clock.tick(199);
+        expect(connectSpy.called).to.equal(false);
+        clock.tick(1);
+        expect(connectSpy.calledOnce).to.equal(true);
+
+        // connect() called. retries becomes 2.
+        connectSpy.reset();
+        stream.connecting = false;
+
+        // 3rd Retry: retries=2. Delay = 100 * 2^2 = 400ms.
+        stream.socket.dispatchEvent('close');
+        clock.tick(399);
+        expect(connectSpy.called).to.equal(false);
+        clock.tick(1);
+        expect(connectSpy.calledOnce).to.equal(true);
+      });
+
+      it('Should not exceed retry_max interval', () => {
+        const clock = sandbox.useFakeTimers();
+        sandbox.stub(tls, 'connect').callsFake(() => new MockSocket());
+
+        const stream = createStream({
+          ssl_enable: true,
+          max_connect_retries: 100,
+          retry_min: 100,
+          retry_max: 150
+        });
+
+        const connectSpy = sandbox.spy(stream, 'connect');
+
+        // Initial state
+        stream.connecting = false;
+        stream.retries = 0;
+
+        // 1st Retry: retries=0. Delay = 100 * 2^0 = 100.
+        stream.socket.dispatchEvent('close');
+        clock.tick(100);
+        expect(connectSpy.calledOnce).to.equal(true);
+        connectSpy.reset();
+        stream.connecting = false;
+
+        // 2nd Retry: retries=1. Delay = 100 * 2^1 = 200 -> Capped at 150.
+        stream.socket.dispatchEvent('close');
+        clock.tick(149);
+        expect(connectSpy.called).to.equal(false);
+        clock.tick(1);
+        expect(connectSpy.calledOnce).to.equal(true);
+      });
     });
     describe('flush', () => {
       it('Should send all messages in one batch and leave queue empty', () => {

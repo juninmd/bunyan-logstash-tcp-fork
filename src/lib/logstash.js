@@ -26,6 +26,27 @@ const IGNORED_KEYS = {
 };
 
 /**
+ * Helper to get the timestamp from the entry.
+ *
+ * @param {any} time The time field from the entry.
+ * @returns {string} The ISO string timestamp.
+ * @private
+ */
+function getTimestamp(time) {
+  try {
+    if (time instanceof Date) {
+      return time.toISOString();
+    } else if (typeof time === 'string') {
+      return new Date(time).toISOString();
+    }
+    return new Date().toISOString();
+  } catch (error) {
+    // If time is invalid, default to now
+    return new Date().toISOString();
+  }
+}
+
+/**
  * This class implements the bunyan stream contract with a stream that
  * sends data to logstash.
  *
@@ -147,19 +168,7 @@ class LogstashStream extends EventEmitter {
       level = levels.get(level);
     }
 
-    let timestamp;
-    try {
-      if (rec.time instanceof Date) {
-        timestamp = rec.time.toISOString();
-      } else if (typeof rec.time === 'string') {
-        timestamp = new Date(rec.time).toISOString();
-      } else {
-        timestamp = new Date().toISOString();
-      }
-    } catch (error) {
-      // If time is invalid, default to now
-      timestamp = new Date().toISOString();
-    }
+    const timestamp = getTimestamp(rec.time);
 
     const msg = {
       '@timestamp': timestamp,
@@ -288,7 +297,8 @@ class LogstashStream extends EventEmitter {
         if (!this.connecting) {
           const delay = Math.min(
             this.retry_max,
-            this.retry_min * (2 ** this.retries)
+            // eslint-disable-next-line no-restricted-properties
+            this.retry_min * Math.pow(2, this.retries)
           );
           setTimeout(() => {
             this.connect();

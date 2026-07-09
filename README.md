@@ -1,112 +1,160 @@
-# Logstash TCP stream for Bunyan
+# bunyan-logstash-tcp-fork
 
-[![CircleCI](https://circleci.com/gh/transcovo/bunyan-logstash-tcp.svg?style=shield)](https://circleci.com/gh/transcovo/bunyan-logstash-tcp)
-[![codecov](https://codecov.io/gh/transcovo/bunyan-logstash-tcp/branch/master/graph/badge.svg)](https://codecov.io/gh/transcovo/bunyan-logstash-tcp)
+[![CI](https://github.com/juninmd/bunyan-logstash-tcp-fork/actions/workflows/ci.yml/badge.svg)](https://github.com/juninmd/bunyan-logstash-tcp-fork/actions/workflows/ci.yml)
+[![npm version](https://badge.fury.io/js/bunyan-logstash-tcp-fork.svg)](https://badge.fury.io/js/bunyan-logstash-tcp-fork)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A tcp logger for [Logstash](http://logstash.net/docs/1.4.2/inputs/tcp) that supports SSL/TLS, buffering, and backpressure.
+A modern, TypeScript-first TCP stream for [Bunyan](https://github.com/trentm/node-bunyan) that sends logs to Logstash. Supports SSL/TLS, robust connection handling, batching, buffering, and exponential backoff.
+
+This is a modernized fork of the original `bunyan-logstash-tcp` with better performance, full TypeScript support, up-to-date tooling (Node 18+), and improved handling of network drops.
 
 ## Features
 
-- **Performance**: Optimized write operations, minimal object allocation, and faster JSON serialization using `fast-safe-stringify`.
-- **Batching**: Reduces system calls by batching log messages (up to 16KB chunks) before writing to the socket.
-- **Reliability**: Robust error handling for connection issues, TLS configuration, and JSON parsing. Automatic reconnection logic.
-- **Keep-Alive**: Enables TCP Keep-Alive to detect dead connections.
-- **Backpressure**: Handles TCP backpressure to prevent memory leaks or data loss.
-- **Ordering**: Ensures FIFO (First-In-First-Out) delivery of buffered logs.
-- **SSL/TLS Support**: Secure logging with SSL/TLS.
-- **Modern**: ES6 class-based implementation.
+- **TypeScript Ready**: First-class TypeScript support with strong typing for stream configuration.
+- **Performance**: Uses `fast-safe-stringify` for blazing fast JSON serialization and reduces system calls by batching messages (up to 16KB chunks) before writing to the socket.
+- **Reliability & Resilience**: Built-in exponential backoff reconnection logic. Buffers logs in a circular queue when offline and handles TCP backpressure correctly to prevent memory leaks or data loss.
+- **SSL/TLS Support**: Native support for secure log transmission with configurable certificates and keys.
+- **Keep-Alive**: Automatic TCP Keep-Alive to detect dead connections rapidly.
+- **FIFO Ordering**: Ensures First-In-First-Out delivery of buffered logs.
 
 ## Installation
 
+You can install this package using any major package manager:
+
 ```bash
+# Using npm
 npm install bunyan-logstash-tcp-fork
+
+# Using yarn
+yarn add bunyan-logstash-tcp-fork
+
+# Using pnpm
+pnpm add bunyan-logstash-tcp-fork
+
+# Using bun
+bun add bunyan-logstash-tcp-fork
 ```
 
 ## Usage
 
-### Basic Usage
+### TypeScript Example
+
+```typescript
+import bunyan from 'bunyan';
+import { createStream } from 'bunyan-logstash-tcp-fork';
+
+const logstashStream = createStream({
+  host: '127.0.0.1',
+  port: 9998,
+  appName: 'my-service',
+  max_connect_retries: 10,
+  retry_min: 500,     // start backoff at 500ms
+  retry_max: 30000,   // cap backoff at 30 seconds
+  cbuffer_size: 100   // keep last 100 logs in memory while offline
+});
+
+const log = bunyan.createLogger({
+  name: 'myapp',
+  streams: [
+    {
+      level: 'info',
+      type: 'raw',
+      stream: logstashStream
+    }
+  ]
+});
+
+// Best practice: handle stream errors to prevent Node from crashing on unhandled socket errors
+logstashStream.on('error', (err: Error) => {
+  console.error('Logstash stream error:', err.message);
+});
+
+log.info({ user: 'johndoe' }, 'User logged in');
+```
+
+### JavaScript Example (SSL/TLS)
 
 ```javascript
 const bunyan = require('bunyan');
-const bunyantcp = require('bunyan-logstash-tcp-fork');
+const { createStream } = require('bunyan-logstash-tcp-fork');
 
 const log = bunyan.createLogger({
-  name: 'myapp',
+  name: 'myapp-secure',
   streams: [
     {
       level: 'info',
       type: 'raw',
-      stream: bunyantcp.createStream({
-        host: '127.0.0.1',
-        port: 9998
-      })
-    }
-  ]
-});
-
-log.info('Hello Logstash!');
-```
-
-### SSL/TLS Usage
-
-```javascript
-const log = bunyan.createLogger({
-  name: 'myapp',
-  streams: [
-    {
-      level: 'info',
-      type: 'raw',
-      stream: bunyantcp.createStream({
+      stream: createStream({
         host: 'logstash.example.com',
-        port: 9998,
+        port: 9999,
         ssl_enable: true,
         ssl_key: '/path/to/client-key.pem',
         ssl_cert: '/path/to/client-cert.pem',
-        ca: ['/path/to/ca-cert.pem']
+        ca: ['/path/to/ca-cert.pem'],
+        ssl_passphrase: 'optional-passphrase'
       })
     }
   ]
 });
+
+log.info('Securely sending logs to Logstash!');
 ```
 
 ## Configuration Options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `host` | `string` | `"127.0.0.1"` | Logstash host address. |
-| `port` | `number` | `9999` | Logstash TCP port. |
+| `host` | `string` | `"127.0.0.1"` | The Logstash host address. |
+| `port` | `number` | `9999` | The Logstash TCP port. |
 | `level` | `string` | `"info"` | Log level (trace, debug, info, warn, error, fatal). |
-| `server` | `string` | `os.hostname()` | Server name added to log metadata. |
-| `appName` | `string` | `process.title` | Application name added to log metadata. |
-| `pid` | `number` | `process.pid` | Process ID added to log metadata. |
-| `tags` | `string[]` | `["bunyan"]` | Tags to add to the log entry. |
-| `type` | `string` | `undefined` | Log type field. |
-| `ssl_enable` | `boolean` | `false` | Enable SSL/TLS connection. |
-| `ssl_key` | `string` | `""` | Path to SSL key file. |
-| `ssl_cert` | `string` | `""` | Path to SSL certificate file. |
-| `ca` | `string[]` | `[]` | Array of paths to CA certificates. |
-| `ssl_passphrase` | `string` | `""` | Passphrase for SSL key. |
-| `cbuffer_size` | `number` | `10` | Size of the circular buffer for offline logs. |
-| `max_connect_retries` | `number` | `4` | Maximum number of connection retries. |
-| `retry_interval` | `number` | `100` | (Deprecated) Interval in ms between retries. Use `retry_min` instead. |
-| `retry_min` | `number` | `100` | Minimum interval in ms between retries (start of exponential backoff). |
-| `retry_max` | `number` | `10000` | Maximum interval in ms between retries. |
+| `server` | `string` | `os.hostname()` | The server name, added to log metadata. |
+| `appName` | `string` | `process.title` | Application name, added to log metadata. |
+| `pid` | `number` | `process.pid` | Process ID, added to log metadata. |
+| `tags` | `string[]` | `["bunyan"]` | Array of tags to add to the log entry. |
+| `type` | `string` | `undefined` | The log type field. |
+| `ssl_enable` | `boolean` | `false` | Enable SSL/TLS secure connection. |
+| `ssl_key` | `string` | `""` | Absolute path to the SSL key file. |
+| `ssl_cert` | `string` | `""` | Absolute path to the SSL certificate file. |
+| `ca` | `string[]` | `[]` | Array of absolute paths to CA certificates. |
+| `ssl_passphrase` | `string` | `""` | Passphrase for the SSL key. |
+| `cbuffer_size` | `number` | `10` | The size of the circular buffer used to hold logs when the stream is disconnected. |
+| `max_connect_retries` | `number` | `4` | Maximum number of connection retries before the stream goes permanently silent. Set to `< 0` for infinite retries. |
+| `retry_min` | `number` | `100` | Minimum interval in ms between connection retries (the base for the exponential backoff). |
+| `retry_max` | `number` | `10000` | Maximum interval in ms between retries. Capped exponential backoff. |
+| `retry_interval` | `number` | `100` | (Deprecated) Use `retry_min` instead. |
+
+## Network Resilience & Backpressure
+
+### Reconnection & Backoff
+
+If the connection to Logstash drops, this stream will automatically attempt to reconnect using an **exponential backoff algorithm**.
+The wait time is calculated as `min(retry_max, retry_min * 2^retries)`.
+
+If `max_connect_retries` is reached, the stream will clear its buffer and enter a `silent` mode where further log operations are dropped cheaply. This prevents memory leaks if Logstash becomes permanently unreachable.
+
+### Buffering
+
+While the stream is offline or attempting to reconnect, incoming logs are stored in a circular buffer (up to `cbuffer_size`). Once reconnected, this buffer is quickly flushed to Logstash via batch processing to minimize system calls.
+
+### Backpressure
+
+If the underlying Node.js TCP Socket buffer gets full, the stream will respect the Node.js `drain` event to prevent your Node application from running out of memory.
 
 ## Error Handling
 
-The stream emits `error` events. It is recommended to handle these to prevent the application from crashing.
+By default, Node.js streams emit `error` events on network issues. If these are not handled, they will bubble up as `uncaughtException`s and crash your process.
+Always listen to the `error` event:
 
-```javascript
-const stream = bunyantcp.createStream({ ... });
-
+```typescript
+const stream = createStream({ ... });
 stream.on('error', (err) => {
-  console.error('Logstash stream error:', err);
+  // Silent log, or report to another APM system
 });
 ```
 
-## Logstash Configuration
+## Logstash Configuration Example
 
-Example `logstash.conf`:
+A standard Logstash input configuration (`logstash.conf`) for this plugin:
 
 ```ruby
 input {
@@ -121,18 +169,6 @@ output {
 }
 ```
 
-## Credits
-
-This module is heavily based on [bunyan-logstash](https://github.com/sheknows/bunyan-logstash) and re-uses parts of [winston-logstash](https://github.com/jaakkos/winston-logstash/blob/master/lib/winston-logstash.js).
-
-Thanks to
-
-- [sheknows](https://github.com/sheknows)
-- [jaakkos](https://github.com/jaakkos) 
-- [Chris Rock](https://github.com/chris-rock/bunyan-logstash-tcp)
-
-for their amazing work
-
 ## License
 
-MIT
+[MIT](LICENSE.md)

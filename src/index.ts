@@ -1,12 +1,13 @@
-const net = require('net');
-const fs = require('fs');
-const os = require('os');
-const tls = require('tls');
-const CBuffer = require('CBuffer');
-const EventEmitter = require('events').EventEmitter;
-const safeStringify = require('fast-safe-stringify');
+import { EventEmitter } from 'node:events';
+import fs from 'node:fs';
+import net from 'node:net';
+import os from 'node:os';
+import tls from 'node:tls';
+// @ts-ignore
+import CBuffer from 'CBuffer';
+import safeStringify from 'fast-safe-stringify';
 
-const levels = new Map([
+const levels = new Map<number, string>([
   [10, 'trace'],
   [20, 'debug'],
   [30, 'info'],
@@ -17,7 +18,7 @@ const levels = new Map([
 
 // Keys that are manually constructed in the msg object and should be skipped
 // in the generic copy loop
-const IGNORED_KEYS = {
+const IGNORED_KEYS: Record<string, boolean> = {
   msg: true,
   time: true,
   v: true,
@@ -28,15 +29,15 @@ const IGNORED_KEYS = {
 /**
  * Helper to get the timestamp from the entry.
  *
- * @param {any} time The time field from the entry.
- * @returns {string} The ISO string timestamp.
- * @private
+ * @param time The time field from the entry.
+ * @returns The ISO string timestamp.
  */
-function getTimestamp(time) {
+function getTimestamp(time: any): string {
   try {
     if (time instanceof Date) {
       return time.toISOString();
-    } else if (typeof time === 'string') {
+    }
+    if (typeof time === 'string') {
       return new Date(time).toISOString();
     }
     return new Date().toISOString();
@@ -46,45 +47,87 @@ function getTimestamp(time) {
   }
 }
 
+export interface LogstashStreamOptions {
+  /** Log level (trace, debug, info, warn, error, fatal). */
+  level?: string;
+  /** Server name added to log metadata. */
+  server?: string;
+  /** Logstash host address. */
+  host?: string;
+  /** Logstash TCP port. */
+  port?: number;
+  /** Application name added to log metadata. */
+  appName?: string;
+  /** Process ID added to log metadata. */
+  pid?: number;
+  /** Tags to add to the log entry. */
+  tags?: string[];
+  /** Log type field. */
+  type?: string;
+  /** Enable SSL/TLS connection. */
+  ssl_enable?: boolean;
+  /** Path to SSL key file. */
+  ssl_key?: string;
+  /** Path to SSL certificate file. */
+  ssl_cert?: string;
+  /** Array of paths to CA certificates. */
+  ca?: string[];
+  /** Passphrase for SSL key. */
+  ssl_passphrase?: string;
+  /** Size of the circular buffer for offline logs. */
+  cbuffer_size?: number;
+  /** Maximum number of connection retries. */
+  max_connect_retries?: number;
+  /** (Deprecated) Interval in ms between retries. Use retry_min instead. */
+  retry_interval?: number;
+  /** Minimum interval in ms between retries (start of exponential backoff). */
+  retry_min?: number;
+  /** Maximum interval in ms between retries. */
+  retry_max?: number;
+}
+
 /**
  * This class implements the bunyan stream contract with a stream that
  * sends data to logstash.
- *
- * @extends EventEmitter
- * @fires LogstashStream#connect
- * @fires LogstashStream#close
- * @fires LogstashStream#error
- * @fires LogstashStream#timeout
  */
-class LogstashStream extends EventEmitter {
+export class LogstashStream extends EventEmitter {
+  public name: string;
+  public level: string;
+  public server: string;
+  public host: string;
+  public port: number;
+  public application: string;
+  public pid: number;
+  public tags: string[];
+  public type?: string;
+  public source: string;
+  public ssl_enable: boolean;
+  public ssl_key: string;
+  public ssl_cert: string;
+  public ca: string | string[];
+  public ssl_passphrase?: string;
+  public tlsOptions?: tls.ConnectionOptions;
+  public cbuffer_size: number;
+  public log_queue: any;
+  public connected: boolean;
+  public socket: net.Socket | tls.TLSSocket | null;
+  public retries: number;
+  public canWriteToExternalSocket: boolean;
+  public max_connect_retries: number;
+  public retry_interval: number;
+  public retry_min: number;
+  public retry_max: number;
+  public connecting: boolean;
+  public silent: boolean;
+
   /**
    * Creates a new instance of LogstashStream from the options.
    *
-   * @param {object} options The constructions options.
-   * @param {string} [options.level='info'] The log level.
-   * @param {string} [options.server=os.hostname()] The server name.
-   * @param {string} [options.host='127.0.0.1'] The logstash host.
-   * @param {number} [options.port=9999] The logstash port.
-   * @param {string} [options.appName=process.title] The application name.
-   * @param {number} [options.pid=process.pid] The process ID.
-   * @param {string[]} [options.tags=['bunyan']] Tags to add to the log.
-   * @param {string} [options.type] The type of the log.
-   * @param {boolean} [options.ssl_enable=false] Enable SSL/TLS.
-   * @param {string} [options.ssl_key] Path to SSL key.
-   * @param {string} [options.ssl_cert] Path to SSL certificate.
-   * @param {string[]} [options.ca] Paths to CA certificates.
-   * @param {string} [options.ssl_passphrase] SSL passphrase.
-   * @param {number} [options.cbuffer_size=10] Size of the circular buffer.
-   * @param {number} [options.max_connect_retries=4] Maximum number of connection retries.
-   * @param {number} [options.retry_interval=100] Retry interval in ms.
-   * @param {number} [options.retry_min=100] Minimum retry interval in ms.
-   * @param {number} [options.retry_max=10000] Maximum retry interval in ms.
+   * @param options The constructions options.
    */
-  constructor(options) {
+  constructor(options?: LogstashStreamOptions) {
     super();
     const opts = options || {};
-
-    this.client = null;
 
     this.name = 'bunyan';
     this.level = opts.level || 'info';
@@ -109,12 +152,14 @@ class LogstashStream extends EventEmitter {
     if (this.ssl_enable) {
       try {
         this.tlsOptions = {
-          key: this.ssl_key ? fs.readFileSync(this.ssl_key) : null,
-          cert: this.ssl_cert ? fs.readFileSync(this.ssl_cert) : null,
-          passphrase: this.ssl_passphrase ? this.ssl_passphrase : null,
-          ca: this.ca ? this.ca.map(filePath => fs.readFileSync(filePath)) : null
+          key: this.ssl_key ? fs.readFileSync(this.ssl_key) : undefined,
+          cert: this.ssl_cert ? fs.readFileSync(this.ssl_cert) : undefined,
+          passphrase: this.ssl_passphrase ? this.ssl_passphrase : undefined,
+          ca: Array.isArray(this.ca)
+            ? this.ca.map((filePath) => fs.readFileSync(filePath))
+            : undefined
         };
-      } catch (err) {
+      } catch (err: any) {
         throw new Error(`Failed to load SSL/TLS certificates: ${err.message}`);
       }
     }
@@ -128,12 +173,13 @@ class LogstashStream extends EventEmitter {
     this.retries = -1;
     this.canWriteToExternalSocket = false;
 
-    this.max_connect_retries = (typeof opts.max_connect_retries === 'number')
-      ? opts.max_connect_retries
-      : 4;
+    this.max_connect_retries =
+      typeof opts.max_connect_retries === 'number' ? opts.max_connect_retries : 4;
     this.retry_interval = opts.retry_interval || 100;
     this.retry_min = opts.retry_min || this.retry_interval || 100;
     this.retry_max = opts.retry_max || 10000;
+    this.connecting = false;
+    this.silent = false;
 
     this.connect();
   }
@@ -141,17 +187,16 @@ class LogstashStream extends EventEmitter {
   /**
    * Writes a log entry to the stream.
    *
-   * @param {object|string} entry The entry to write.
-   * @returns {void}
+   * @param entry The entry to write.
    */
-  write(entry) {
+  public write(entry: any): void {
     if (this.silent) {
       return;
     }
 
-    let rec;
+    let rec: any;
 
-    if (typeof (entry) === 'string') {
+    if (typeof entry === 'string') {
       try {
         rec = JSON.parse(entry);
       } catch (e) {
@@ -170,7 +215,7 @@ class LogstashStream extends EventEmitter {
 
     const timestamp = getTimestamp(rec.time);
 
-    const msg = {
+    const msg: any = {
       '@timestamp': timestamp,
       message: rec.msg,
       tags: this.tags,
@@ -179,7 +224,7 @@ class LogstashStream extends EventEmitter {
       pid: this.pid
     };
 
-    if (typeof (this.type) === 'string') {
+    if (typeof this.type === 'string') {
       msg.type = this.type;
     }
 
@@ -198,11 +243,9 @@ class LogstashStream extends EventEmitter {
   /**
    * Helper to create a TCP connection.
    *
-   * @param {function} onConnectCallback Callback called when connection is established.
-   * @returns {void}
-   * @private
+   * @param onConnectCallback Callback called when connection is established.
    */
-  connectTCP(onConnectCallback) {
+  private connectTCP(onConnectCallback: () => void): void {
     this.socket = new net.Socket();
     this.socket.connect(this.port, this.host, () => {
       if (this.socket) {
@@ -215,14 +258,12 @@ class LogstashStream extends EventEmitter {
   /**
    * Helper to create a TLS connection.
    *
-   * @param {function} onConnectCallback Callback called when connection is established.
-   * @returns {void}
-   * @private
+   * @param onConnectCallback Callback called when connection is established.
    */
-  connectTLS(onConnectCallback) {
+  private connectTLS(onConnectCallback: () => void): void {
     this.socket = tls.connect(this.port, this.host, this.tlsOptions, () => {
       if (this.socket) {
-        this.socket.setEncoding('UTF-8');
+        this.socket.setEncoding('utf-8');
         this.socket.setKeepAlive(true, 60000); // Keep connection alive
       }
       onConnectCallback();
@@ -231,10 +272,8 @@ class LogstashStream extends EventEmitter {
 
   /**
    * Connects the stream to the remote logstash server specified in the options.
-   *
-   * @returns {void}
    */
-  connect() {
+  public connect(): void {
     this.retries += 1;
     this.connecting = true;
 
@@ -243,7 +282,7 @@ class LogstashStream extends EventEmitter {
       this.announce();
     };
 
-    const onError = (err) => {
+    const onError = (err: Error) => {
       this.connecting = false;
       this.connected = false;
       if (this.socket) {
@@ -295,11 +334,7 @@ class LogstashStream extends EventEmitter {
 
       if (this.max_connect_retries < 0 || this.retries < this.max_connect_retries) {
         if (!this.connecting) {
-          const delay = Math.min(
-            this.retry_max,
-            // eslint-disable-next-line no-restricted-properties
-            this.retry_min * Math.pow(2, this.retries)
-          );
+          const delay = Math.min(this.retry_max, this.retry_min * 2 ** this.retries);
           setTimeout(() => {
             this.connect();
           }, delay).unref();
@@ -315,10 +350,8 @@ class LogstashStream extends EventEmitter {
 
   /**
    * Announces that the stream is connected. Will flush any messages in the queue.
-   *
-   * @returns {void}
    */
-  announce() {
+  public announce(): void {
     this.connected = true;
     this.flush();
   }
@@ -328,14 +361,12 @@ class LogstashStream extends EventEmitter {
    * destination.
    *
    * It uses a batching mechanism to reduce the number of system calls.
-   *
-   * @returns {void}
    */
-  flush() {
-    if (!this.connected) return;
+  public flush(): void {
+    if (!this.connected || !this.socket) return;
 
     const MAX_BATCH_SIZE = 16 * 1024; // 16KB batch size limit
-    const batch = [];
+    const batch: string[] = [];
     let batchSize = 0;
 
     // Check if we have items in the queue
@@ -383,10 +414,9 @@ class LogstashStream extends EventEmitter {
   /**
    * Immediately writes a string to the undelying socket.
    *
-   * @param {string} message The string to write.
-   * @returns {void}
+   * @param message The string to write.
    */
-  sendLog(message) {
+  public sendLog(message: string): void {
     if (this.socket) {
       try {
         if (!this.socket.write(`${message}\n`)) {
@@ -401,10 +431,9 @@ class LogstashStream extends EventEmitter {
   /**
    * Sends a string message. The message will be immediately sent if the stream
    * is already connected, or queued if the stream is not connected yet.
-   * @param {string} message The string to send
-   * @returns {void}
+   * @param message The string to send
    */
-  send(message) {
+  public send(message: string): void {
     // If the queue is empty and we are connected and can write, send directly.
     // This avoids unnecessary buffering and shifting.
     if (this.log_queue.length === 0 && this.connected && this.canWriteToExternalSocket) {
@@ -421,15 +450,10 @@ class LogstashStream extends EventEmitter {
 /**
  * Creates a new instance of LogstashStream from the options.
  *
- * @param {object} options The constructions options. See the constructor for details.
+ * @param options The constructions options. See the constructor for details.
  *
- * @returns {LogstashStream} The bunyan stream that sends data to logstash
+ * @returns The bunyan stream that sends data to logstash
  */
-function createLogstashStream(options) {
+export function createStream(options?: LogstashStreamOptions): LogstashStream {
   return new LogstashStream(options);
 }
-
-module.exports = {
-  createStream: createLogstashStream,
-  LogstashStream
-};

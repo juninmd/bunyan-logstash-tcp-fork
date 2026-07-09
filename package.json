@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "repository": "https://github.com/juninmd/bunyan-logstash-tcp-fork.git",
   "homepage": "https://github.com/juninmd/bunyan-logstash-tcp-fork",
-  "main": "dist/lib/logstash.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "author": "Antonio Carlos",
   "license": "MIT",
   "keywords": [
@@ -22,33 +23,31 @@
     "bunyan": "1.x"
   },
   "devDependencies": {
-    "babel-cli": "6.24.1",
-    "babel-preset-es2015": "6.24.1",
+    "@biomejs/biome": "1.8.3",
+    "@types/bunyan": "^1.8.11",
+    "@types/chai": "^4.3.16",
+    "@types/mocha": "^10.0.7",
+    "@types/node": "^18.19.40",
+    "@types/sinon": "^17.0.3",
     "bunyan": "1.x",
-    "chai": "3.5.0",
-    "co-mocha": "1.2.0",
-    "eslint": "3.19.0",
-    "eslint-config-airbnb": "14.1.0",
-    "eslint-config-cp": "5.0.0",
-    "eslint-plugin-import": "2.2.0",
-    "eslint-plugin-jsx-a11y": "4.0.0",
-    "eslint-plugin-react": "6.9.0",
-    "istanbul": "0.4.5",
-    "mocha": "3.3.0",
-    "sinon": "2.2.0"
+    "chai": "^4.4.1",
+    "mocha": "^10.5.2",
+    "nyc": "^17.0.0",
+    "sinon": "^18.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.3"
   },
   "engines": {
-    "node": ">= 4.0.0"
+    "node": ">= 18.0.0"
   },
   "scripts": {
-    "test": "npm run eslint && npm run coverage",
-    "eslint": "eslint src --max-warnings=0",
-    "coverage": "LOGGER_LEVEL=fatal istanbul cover _mocha --root ./src/lib -- src/test",
-    "mocha": "mocha --bail src/test",
-    "build": "npm run transpile && npm run test-dist",
-    "transpile": "babel src -d dist",
-    "test-dist": "mocha --bail dist/test",
-    "prepare": "npm run build"
+    "test": "yarn run lint && yarn run coverage",
+    "lint": "biome check src",
+    "lint:fix": "biome check --write src",
+    "coverage": "LOGGER_LEVEL=fatal nyc mocha dist/test/*.test.js",
+    "mocha": "mocha dist/test/*.test.js",
+    "build": "tsc",
+    "prepare": "yarn run build"
   },
   "files": [
     "dist"

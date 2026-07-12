@@ -7,7 +7,7 @@ import tls from 'node:tls';
 import CBuffer from 'CBuffer';
 import { expect } from 'chai';
 import sinon from 'sinon';
-import { type LogstashStream, LogstashStreamOptions, createStream } from '../index';
+import { type LogstashStream, type LogstashStreamOptions, createStream } from '../index';
 
 class MockSocket extends EventEmitter {
   public unrefCalled = false;
@@ -58,7 +58,7 @@ describe('LogstashStream', () => {
 
   beforeEach(() => {
     sandbox = sinon.createSandbox();
-    sandbox.stub(net.Socket.prototype, 'connect').callsFake(function (this: any) {
+    sandbox.stub(net.Socket.prototype, 'connect').callsFake(function (this: net.Socket) {
       setTimeout(() => this.emit('connect'), 10);
       return this;
     });
@@ -106,7 +106,7 @@ describe('LogstashStream', () => {
         retry_interval: 200,
         retry_min: 50,
         retry_max: 5000
-      } as any);
+      } as unknown as LogstashStreamOptions);
 
       expect(stream).to.have.property('level', 'debug');
       expect(stream).to.have.property('server', 'custom-server');
@@ -124,7 +124,7 @@ describe('LogstashStream', () => {
     });
 
     it('Should handle SSL/TLS options correctly', () => {
-      sandbox.stub(fs, 'readFileSync').returns('dummy-content' as any);
+      sandbox.stub(fs, 'readFileSync').returns(Buffer.from('dummy-content'));
       const stream = createStream({
         ssl_enable: true,
         ssl_key: '/path/to/key',
@@ -134,8 +134,8 @@ describe('LogstashStream', () => {
       });
 
       expect(stream).to.have.property('ssl_enable', true);
-      expect(stream.tlsOptions).to.have.property('key', 'dummy-content');
-      expect(stream.tlsOptions).to.have.property('cert', 'dummy-content');
+      expect(stream.tlsOptions?.key?.toString()).to.equal('dummy-content');
+      expect(stream.tlsOptions?.cert?.toString()).to.equal('dummy-content');
       expect(stream.tlsOptions).to.have.property('passphrase', 'password');
       expect(stream.tlsOptions?.ca).to.be.an('array').with.lengthOf(1);
     });
@@ -221,7 +221,7 @@ describe('LogstashStream', () => {
   describe('connect', () => {
     it('Should connect via TCP when ssl_enable is false', (done) => {
       const socketMock = new MockSocket();
-      sandbox.stub(net, 'Socket').returns(socketMock as any);
+      sandbox.stub(net, 'Socket').returns(socketMock as unknown as net.Socket);
 
       const stream = createStream();
 
@@ -236,14 +236,14 @@ describe('LogstashStream', () => {
 
     it('Should connect via TLS when ssl_enable is true', (done) => {
       const socketMock = new MockSocket();
-      sandbox.stub(tls, 'connect').callsFake((...args: any[]) => {
-        const callback = args[args.length - 1];
+      sandbox.stub(tls, 'connect').callsFake((...args: unknown[]) => {
+        const callback = args[args.length - 1] as () => void;
         if (typeof callback === 'function') {
           setTimeout(callback, 10);
         }
-        return socketMock as any;
+        return socketMock as unknown as tls.TLSSocket;
       });
-      sandbox.stub(fs, 'readFileSync').returns('dummy' as any);
+      sandbox.stub(fs, 'readFileSync').returns(Buffer.from('dummy'));
 
       const stream = createStream({ ssl_enable: true, ssl_key: 'dummy' });
 
@@ -257,7 +257,7 @@ describe('LogstashStream', () => {
 
     it('Should handle socket timeout', () => {
       const socketMock = new MockSocket();
-      sandbox.stub(net, 'Socket').returns(socketMock as any);
+      sandbox.stub(net, 'Socket').returns(socketMock as unknown as net.Socket);
 
       const stream = createStream();
       const emitSpy = sandbox.spy(stream, 'emit');
@@ -270,7 +270,7 @@ describe('LogstashStream', () => {
 
     it('Should handle socket drain event', () => {
       const socketMock = new MockSocket();
-      sandbox.stub(net, 'Socket').returns(socketMock as any);
+      sandbox.stub(net, 'Socket').returns(socketMock as unknown as net.Socket);
 
       const stream = createStream();
       const flushStub = sandbox.stub(stream, 'flush');
@@ -285,10 +285,10 @@ describe('LogstashStream', () => {
       const clock = sandbox.useFakeTimers();
       const socketMock = new MockSocket();
       // Restore the existing stub before re-stubbing
-      (net.Socket.prototype.connect as any).restore();
+      (net.Socket.prototype.connect as sinon.SinonStub).restore();
 
       // use callsFake so we return a new socketmock that we can emit events on, overriding the earlier stub
-      sandbox.stub(net.Socket.prototype, 'connect').callsFake(function (this: any) {
+      sandbox.stub(net.Socket.prototype, 'connect').callsFake(function (this: net.Socket) {
         // do not emit connect automatically here because we are simulating failure/close
         return this;
       });
@@ -299,7 +299,7 @@ describe('LogstashStream', () => {
         retry_max: 10000
       });
       // assign our mocked socket to the stream
-      stream.socket = socketMock as any;
+      stream.socket = socketMock as unknown as net.Socket;
 
       // Connect was already called in constructor
       const connectSpy = sandbox.spy(stream, 'connect');
@@ -339,7 +339,7 @@ describe('LogstashStream', () => {
 
     it('Should go silent when max retries exceeded', () => {
       const socketMock = new MockSocket();
-      sandbox.stub(net, 'Socket').returns(socketMock as any);
+      sandbox.stub(net, 'Socket').returns(socketMock as unknown as net.Socket);
 
       const stream = createStream({
         max_connect_retries: 1
@@ -359,12 +359,12 @@ describe('LogstashStream', () => {
       const stream = createStream();
       stream.connected = true;
       stream.canWriteToExternalSocket = true;
-      stream.socket = new MockSocket() as any;
+      stream.socket = new MockSocket() as unknown as net.Socket;
 
       stream.log_queue.push('a');
       stream.log_queue.push('b');
 
-      const writeSpy = sandbox.spy(stream.socket as any, 'write');
+      const writeSpy = sandbox.spy(stream.socket as unknown as net.Socket, 'write');
 
       stream.flush();
 
@@ -377,9 +377,9 @@ describe('LogstashStream', () => {
       const stream = createStream();
       stream.connected = true;
       stream.canWriteToExternalSocket = true;
-      stream.socket = new MockSocket() as any;
+      stream.socket = new MockSocket() as unknown as net.Socket;
 
-      sandbox.stub(stream.socket as any, 'write').returns(false);
+      sandbox.stub(stream.socket as unknown as net.Socket, 'write').returns(false);
 
       stream.log_queue.push('a');
       stream.log_queue.push('b');

@@ -2,37 +2,32 @@
 
 [![CI](https://github.com/juninmd/bunyan-logstash-tcp-fork/actions/workflows/ci.yml/badge.svg)](https://github.com/juninmd/bunyan-logstash-tcp-fork/actions/workflows/ci.yml)
 [![npm version](https://badge.fury.io/js/bunyan-logstash-tcp-fork.svg)](https://badge.fury.io/js/bunyan-logstash-tcp-fork)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-A modern, TypeScript-first TCP stream for [Bunyan](https://github.com/trentm/node-bunyan) that sends logs to Logstash. Supports SSL/TLS, robust connection handling, batching, buffering, and exponential backoff.
+A modern, strongly-typed [Bunyan](https://github.com/trentm/node-bunyan) stream for sending logs to Logstash via TCP or TLS/SSL.
 
-This is a modernized fork of the original `bunyan-logstash-tcp` with better performance, full TypeScript support, up-to-date tooling (Node 18+), and improved handling of network drops.
+This package is a modernized fork designed for Node.js 18+ with full TypeScript support, robust connection handling, exponential backoff retries, and high-performance log batching.
 
 ## Features
 
-- **TypeScript Ready**: First-class TypeScript support with strong typing for stream configuration.
-- **Performance**: Uses `fast-safe-stringify` for blazing fast JSON serialization and reduces system calls by batching messages (up to 16KB chunks) before writing to the socket.
-- **Reliability & Resilience**: Built-in exponential backoff reconnection logic. Buffers logs in a circular queue when offline and handles TCP backpressure correctly to prevent memory leaks or data loss.
-- **SSL/TLS Support**: Native support for secure log transmission with configurable certificates and keys.
-- **Keep-Alive**: Automatic TCP Keep-Alive to detect dead connections rapidly.
-- **FIFO Ordering**: Ensures First-In-First-Out delivery of buffered logs.
+- **TypeScript Native:** Strict types for a great developer experience.
+- **TCP & TLS/SSL:** Support for both standard and secure TCP connections to Logstash.
+- **Reliability:** Built-in connection retries with exponential backoff and connection state management.
+- **Performance:** Implements log batching, circular buffering for offline logs, and optimized JSON serialization using `fast-safe-stringify`.
+- **Modern Syntax:** Refactored without legacy code to maintain low overhead and high performance.
 
 ## Installation
 
-You can install this package using any major package manager:
+Install using your preferred package manager:
 
 ```bash
-# Using npm
-npm install bunyan-logstash-tcp-fork
-
-# Using yarn
-yarn add bunyan-logstash-tcp-fork
-
-# Using pnpm
-pnpm add bunyan-logstash-tcp-fork
-
-# Using bun
-bun add bunyan-logstash-tcp-fork
+npm install bunyan-logstash-tcp-fork bunyan
+# or
+yarn add bunyan-logstash-tcp-fork bunyan
+# or
+pnpm add bunyan-logstash-tcp-fork bunyan
+# or
+bun add bunyan-logstash-tcp-fork bunyan
 ```
 
 ## Usage
@@ -45,129 +40,89 @@ import { createStream } from 'bunyan-logstash-tcp-fork';
 
 const logstashStream = createStream({
   host: '127.0.0.1',
-  port: 9998,
-  appName: 'my-service',
-  max_connect_retries: 10,
-  retry_min: 500,     // start backoff at 500ms
-  retry_max: 30000,   // cap backoff at 30 seconds
-  cbuffer_size: 100   // keep last 100 logs in memory while offline
+  port: 5000,
+  max_connect_retries: -1, // Retry infinitely
+  retry_min: 1000, // 1 second minimum delay
+  retry_max: 60000 // 60 seconds maximum delay
 });
 
-const log = bunyan.createLogger({
-  name: 'myapp',
+logstashStream.on('error', (err) => {
+  console.error('Logstash Stream Error:', err);
+});
+
+const logger = bunyan.createLogger({
+  name: 'my-app',
   streams: [
     {
-      level: 'info',
       type: 'raw',
+      level: 'info',
       stream: logstashStream
     }
   ]
 });
 
-// Best practice: handle stream errors to prevent Node from crashing on unhandled socket errors
-logstashStream.on('error', (err: Error) => {
-  console.error('Logstash stream error:', err.message);
-});
-
-log.info({ user: 'johndoe' }, 'User logged in');
+logger.info({ user: 'alice' }, 'User logged in successfully');
 ```
 
-### JavaScript Example (SSL/TLS)
+### JavaScript Example (CommonJS)
 
 ```javascript
 const bunyan = require('bunyan');
 const { createStream } = require('bunyan-logstash-tcp-fork');
 
-const log = bunyan.createLogger({
-  name: 'myapp-secure',
+const logstashStream = createStream({
+  host: 'logstash.internal.network',
+  port: 5044,
+  ssl_enable: true,
+  ssl_key: '/path/to/key.pem',
+  ssl_cert: '/path/to/cert.pem',
+  ca: ['/path/to/ca.pem']
+});
+
+const logger = bunyan.createLogger({
+  name: 'my-secure-app',
   streams: [
     {
-      level: 'info',
       type: 'raw',
-      stream: createStream({
-        host: 'logstash.example.com',
-        port: 9999,
-        ssl_enable: true,
-        ssl_key: '/path/to/client-key.pem',
-        ssl_cert: '/path/to/client-cert.pem',
-        ca: ['/path/to/ca-cert.pem'],
-        ssl_passphrase: 'optional-passphrase'
-      })
+      level: 'warn',
+      stream: logstashStream
     }
   ]
 });
 
-log.info('Securely sending logs to Logstash!');
+logger.warn('This log is securely transmitted over TLS.');
 ```
 
 ## Configuration Options
 
+When calling `createStream(options)`, the following configuration options are available:
+
 | Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `host` | `string` | `"127.0.0.1"` | The Logstash host address. |
-| `port` | `number` | `9999` | The Logstash TCP port. |
-| `level` | `string` | `"info"` | Log level (trace, debug, info, warn, error, fatal). |
-| `server` | `string` | `os.hostname()` | The server name, added to log metadata. |
-| `appName` | `string` | `process.title` | Application name, added to log metadata. |
-| `pid` | `number` | `process.pid` | Process ID, added to log metadata. |
-| `tags` | `string[]` | `["bunyan"]` | Array of tags to add to the log entry. |
-| `type` | `string` | `undefined` | The log type field. |
-| `ssl_enable` | `boolean` | `false` | Enable SSL/TLS secure connection. |
-| `ssl_key` | `string` | `""` | Absolute path to the SSL key file. |
-| `ssl_cert` | `string` | `""` | Absolute path to the SSL certificate file. |
-| `ca` | `string[]` | `[]` | Array of absolute paths to CA certificates. |
-| `ssl_passphrase` | `string` | `""` | Passphrase for the SSL key. |
-| `cbuffer_size` | `number` | `10` | The size of the circular buffer used to hold logs when the stream is disconnected. |
-| `max_connect_retries` | `number` | `4` | Maximum number of connection retries before the stream goes permanently silent. Set to `< 0` for infinite retries. |
-| `retry_min` | `number` | `100` | Minimum interval in ms between connection retries (the base for the exponential backoff). |
-| `retry_max` | `number` | `10000` | Maximum interval in ms between retries. Capped exponential backoff. |
-| `retry_interval` | `number` | `100` | (Deprecated) Use `retry_min` instead. |
+|---|---|---|---|
+| `host` | `string` | `'127.0.0.1'` | Logstash server hostname or IP address. |
+| `port` | `number` | `9999` | Logstash server TCP port. |
+| `max_connect_retries` | `number` | `4` | Max reconnection attempts. Use `-1` for infinite retries. When exceeded, the stream enters a permanent silent mode to prevent memory leaks. |
+| `retry_min` | `number` | `100` | Minimum wait time (in ms) before retrying a connection (starts exponential backoff). |
+| `retry_max` | `number` | `10000` | Maximum wait time (in ms) between connection retries. |
+| `cbuffer_size` | `number` | `10` | Number of unwritten log messages to buffer while offline before dropping the oldest logs. |
+| `level` | `string` | `'info'` | Default log level threshold. |
+| `appName` | `string` | `process.title` | Name of the application (adds `source` field). |
+| `server` | `string` | `os.hostname()` | Name of the server (adds `source` field). |
+| `pid` | `number` | `process.pid` | Process ID. |
+| `tags` | `string[]` | `['bunyan']` | Logstash tags to attach to every payload. |
+| `type` | `string` | `undefined` | Logstash `type` field value. |
+| `ssl_enable` | `boolean` | `false` | Enable TLS/SSL connection to Logstash. |
+| `ssl_key` | `string` | `''` | File path to the SSL private key. |
+| `ssl_cert` | `string` | `''` | File path to the SSL certificate. |
+| `ca` | `string[] \| string` | `''` | File path(s) to the Certificate Authority bundle. |
+| `ssl_passphrase` | `string` | `''` | Passphrase used for the SSL private key, if applicable. |
 
-## Network Resilience & Backpressure
+## Network Behavior
 
-### Reconnection & Backoff
-
-If the connection to Logstash drops, this stream will automatically attempt to reconnect using an **exponential backoff algorithm**.
-The wait time is calculated as `min(retry_max, retry_min * 2^retries)`.
-
-If `max_connect_retries` is reached, the stream will clear its buffer and enter a `silent` mode where further log operations are dropped cheaply. This prevents memory leaks if Logstash becomes permanently unreachable.
-
-### Buffering
-
-While the stream is offline or attempting to reconnect, incoming logs are stored in a circular buffer (up to `cbuffer_size`). Once reconnected, this buffer is quickly flushed to Logstash via batch processing to minimize system calls.
-
-### Backpressure
-
-If the underlying Node.js TCP Socket buffer gets full, the stream will respect the Node.js `drain` event to prevent your Node application from running out of memory.
-
-## Error Handling
-
-By default, Node.js streams emit `error` events on network issues. If these are not handled, they will bubble up as `uncaughtException`s and crash your process.
-Always listen to the `error` event:
-
-```typescript
-const stream = createStream({ ... });
-stream.on('error', (err) => {
-  // Silent log, or report to another APM system
-});
-```
-
-## Logstash Configuration Example
-
-A standard Logstash input configuration (`logstash.conf`) for this plugin:
-
-```ruby
-input {
-  tcp {
-    port => 9998
-    codec => json_lines
-  }
-}
-
-output {
-  stdout { codec => rubydebug }
-}
-```
+- **TCP Keep-Alive:** The stream actively uses TCP Keep-Alive to detect dead connections and proactively attempt reconnections.
+- **Buffering & Backpressure:** Logs sent while the stream is disconnected are buffered in a FIFO `CBuffer` up to `cbuffer_size`. The stream correctly monitors `socket.write` returns; if the socket buffer fills up, it waits for the `drain` event before flushing the rest of the queue, effectively handling backpressure.
+- **Batching:** Flushes transmit buffered logs using chunking (batch sizes up to ~16KB) to improve throughput and reduce underlying system calls.
+- **Reconnects:** It uses an exponential backoff strategy calculated as `retry_min * (2 ** retries)`, capped at `retry_max`. If retries exceed `max_connect_retries` (and it's not set to `-1`), the stream halts gracefully, stopping further attempts and ignoring subsequent writes to avoid boundless memory exhaustion.
 
 ## License
 

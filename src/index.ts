@@ -32,7 +32,7 @@ const IGNORED_KEYS: Record<string, boolean> = {
  * @param time The time field from the entry.
  * @returns The ISO string timestamp.
  */
-function getTimestamp(time: any): string {
+function getTimestamp(time: unknown): string {
   try {
     if (time instanceof Date) {
       return time.toISOString();
@@ -91,33 +91,61 @@ export interface LogstashStreamOptions {
  * sends data to logstash.
  */
 export class LogstashStream extends EventEmitter {
+  /** The name of the stream (typically 'bunyan') */
   public name: string;
+  /** The log level */
   public level: string;
+  /** The server name */
   public server: string;
+  /** Logstash host address */
   public host: string;
+  /** Logstash TCP port */
   public port: number;
+  /** Application name */
   public application: string;
+  /** Process ID */
   public pid: number;
+  /** Tags attached to log entries */
   public tags: string[];
+  /** Log type field */
   public type?: string;
+  /** Pre-computed source identifier (server/application) */
   public source: string;
+  /** Whether SSL/TLS is enabled */
   public ssl_enable: boolean;
+  /** Path to SSL key */
   public ssl_key: string;
+  /** Path to SSL certificate */
   public ssl_cert: string;
+  /** Path(s) to CA certificates */
   public ca: string | string[];
+  /** SSL key passphrase */
   public ssl_passphrase?: string;
+  /** Compiled TLS connection options */
   public tlsOptions?: tls.ConnectionOptions;
+  /** Size of the log buffer */
   public cbuffer_size: number;
-  public log_queue: any;
+  /** Circular buffer queue for logs when offline */
+  public log_queue: CBuffer<string>;
+  /** Whether the stream is currently connected */
   public connected: boolean;
+  /** The underlying socket */
   public socket: net.Socket | tls.TLSSocket | null;
+  /** Current number of connection retries */
   public retries: number;
+  /** Whether it is currently safe to write to the socket */
   public canWriteToExternalSocket: boolean;
+  /** Maximum number of allowed retries */
   public max_connect_retries: number;
+  /** Deprecated: Base interval for retries */
   public retry_interval: number;
+  /** Minimum delay for exponential backoff */
   public retry_min: number;
+  /** Maximum delay for exponential backoff */
   public retry_max: number;
+  /** Whether the stream is actively trying to connect */
   public connecting: boolean;
+  /** Whether the stream has gone permanently silent due to exhausted retries */
   public silent: boolean;
 
   /**
@@ -159,8 +187,10 @@ export class LogstashStream extends EventEmitter {
             ? this.ca.map((filePath) => fs.readFileSync(filePath))
             : undefined
         };
-      } catch (err: any) {
-        throw new Error(`Failed to load SSL/TLS certificates: ${err.message}`);
+      } catch (err: unknown) {
+        throw new Error(
+          `Failed to load SSL/TLS certificates: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
     }
 
@@ -189,33 +219,33 @@ export class LogstashStream extends EventEmitter {
    *
    * @param entry The entry to write.
    */
-  public write(entry: any): void {
+  public write(entry: unknown): void {
     if (this.silent) {
       return;
     }
 
-    let rec: any;
+    let rec: Record<string, unknown>;
 
     if (typeof entry === 'string') {
       try {
-        rec = JSON.parse(entry);
+        rec = JSON.parse(entry) as Record<string, unknown>;
       } catch (e) {
         this.emit('error', e);
         return;
       }
     } else {
-      rec = entry;
+      rec = entry as Record<string, unknown>;
     }
 
     let level = rec.level;
 
-    if (levels.has(level)) {
+    if (typeof level === 'number' && levels.has(level)) {
       level = levels.get(level);
     }
 
     const timestamp = getTimestamp(rec.time);
 
-    const msg: any = {
+    const msg: Record<string, unknown> = {
       '@timestamp': timestamp,
       message: rec.msg,
       tags: this.tags,
@@ -371,7 +401,7 @@ export class LogstashStream extends EventEmitter {
 
     // Check if we have items in the queue
     while (this.log_queue.length > 0) {
-      const message = this.log_queue.shift();
+      const message = this.log_queue.shift() as string;
       const entry = `${message}\n`;
       // Optimization: Use string length as proxy for byte length.
       // It is significantly faster than Buffer.byteLength().

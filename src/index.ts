@@ -185,7 +185,9 @@ export class LogstashStream extends EventEmitter {
           passphrase: this.ssl_passphrase ? this.ssl_passphrase : undefined,
           ca: Array.isArray(this.ca)
             ? this.ca.map((filePath) => fs.readFileSync(filePath))
-            : undefined
+            : this.ca
+              ? [fs.readFileSync(this.ca as string)]
+              : undefined
         };
       } catch (err: unknown) {
         throw new Error(

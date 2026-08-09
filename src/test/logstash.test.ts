@@ -3,11 +3,9 @@ import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import tls from 'node:tls';
-// @ts-ignore
-import CBuffer from 'CBuffer';
 import { expect } from 'chai';
 import sinon from 'sinon';
-import { type LogstashStream, type LogstashStreamOptions, createStream } from '../index';
+import { createStream, type LogstashStream, type LogstashStreamOptions } from '../index';
 
 class MockSocket extends EventEmitter {
   public unrefCalled = false;

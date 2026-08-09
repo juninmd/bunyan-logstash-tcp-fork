@@ -1,10 +1,9 @@
+import CBuffer from 'CBuffer';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import tls from 'node:tls';
-// @ts-ignore
-import CBuffer from 'CBuffer';
 import safeStringify from 'fast-safe-stringify';
 
 const levels = new Map<number, string>([
@@ -41,7 +40,7 @@ function getTimestamp(time: unknown): string {
       return new Date(time).toISOString();
     }
     return new Date().toISOString();
-  } catch (error) {
+  } catch (_error) {
     // If time is invalid, default to now
     return new Date().toISOString();
   }
@@ -219,7 +218,7 @@ export class LogstashStream extends EventEmitter {
   /**
    * Writes a log entry to the stream.
    *
-   * @param entry The entry to write.
+   * @param entry The log entry to write (either a JSON string or an object).
    */
   public write(entry: unknown): void {
     if (this.silent) {
@@ -389,6 +388,29 @@ export class LogstashStream extends EventEmitter {
   }
 
   /**
+   * Writes the provided string to the external socket.
+   * Updates state appropriately based on the write success.
+   *
+   * @param payload The payload to write.
+   * @returns true if the write was completely flushed, false if buffering occurred.
+   */
+  private writeToSocket(payload: string): boolean {
+    if (!this.socket) {
+      return false;
+    }
+    try {
+      const result = this.socket.write(payload);
+      if (!result) {
+        this.canWriteToExternalSocket = false;
+      }
+      return result;
+    } catch (e) {
+      this.emit('error', e);
+      return false;
+    }
+  }
+
+  /**
    * Flushes the queue, sending all messages that have not been sent yet to the remote
    * destination.
    *
@@ -416,48 +438,30 @@ export class LogstashStream extends EventEmitter {
 
       // If the chunk exceeds the batch size, write it to the socket
       if (batchSize >= MAX_BATCH_SIZE) {
-        try {
-          if (!this.socket.write(batch.join(''))) {
-            this.canWriteToExternalSocket = false;
-            // We can't write more right now, waiting for drain
-            return;
-          }
-        } catch (e) {
-          this.emit('error', e);
-          return;
-        }
+        const success = this.writeToSocket(batch.join(''));
         batch.length = 0;
         batchSize = 0;
+
+        if (!success) {
+          // We can't write more right now, waiting for drain
+          return;
+        }
       }
     }
 
     // Write any remaining data
     if (batch.length > 0) {
-      try {
-        if (!this.socket.write(batch.join(''))) {
-          this.canWriteToExternalSocket = false;
-        }
-      } catch (e) {
-        this.emit('error', e);
-      }
+      this.writeToSocket(batch.join(''));
     }
   }
 
   /**
-   * Immediately writes a string to the undelying socket.
+   * Immediately writes a string to the underlying socket.
    *
    * @param message The string to write.
    */
   public sendLog(message: string): void {
-    if (this.socket) {
-      try {
-        if (!this.socket.write(`${message}\n`)) {
-          this.canWriteToExternalSocket = false;
-        }
-      } catch (e) {
-        this.emit('error', e);
-      }
-    }
+    this.writeToSocket(`${message}\n`);
   }
 
   /**

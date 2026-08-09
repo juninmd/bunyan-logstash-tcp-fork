@@ -16,23 +16,23 @@
     "logger"
   ],
   "dependencies": {
-    "CBuffer": "2.2.0",
+    "CBuffer": "^2.2.0",
     "fast-safe-stringify": "^2.1.1"
   },
   "peerDependencies": {
     "bunyan": "1.x"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.7",
+    "@biomejs/biome": "^2.5.7",
     "@types/bunyan": "^1.8.11",
-    "@types/chai": "4.3.16",
-    "@types/mocha": "10.0.7",
-    "@types/node": "^26.2.0",
+    "@types/chai": "4",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22",
     "@types/sinon": "^22.0.0",
     "bunyan": "1.x",
-    "chai": "4.4.1",
-    "mocha": "10.5.2",
-    "nyc": "17.1.0",
+    "chai": "4",
+    "mocha": "^11.8.0",
+    "nyc": "^17.1.0",
     "sinon": "^22.1.0",
     "ts-node": "^10.9.2",
     "typescript": "^7.0.2"

@@ -1,0 +1,770 @@
+{
+  "name": "bunyan-logstash-tcp-fork",
+  "description": "Logstash TCP plugin for Bunyan",
+  "version": "1.0.0",
+  "repository": "https://github.com/juninmd/bunyan-logstash-tcp-fork.git",
+  "homepage": "https://github.com/juninmd/bunyan-logstash-tcp-fork",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "author": "Antonio Carlos",
+  "license": "MIT",
+  "keywords": [
+    "logstash",
+    "bunyan",
+    "tcp",
+    "log",
+    "logger"
+  ],
+  "dependencies": {
+    "CBuffer": "^2.2.0",
+    "fast-safe-stringify": "^2.1.1"
+  },
+  "peerDependencies": {
+    "bunyan": "1.x"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.10",
+    "@types/bunyan": "^1.8.11",
+    "@types/chai": "4",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22",
+    "@types/sinon": "^22.0.0",
+    "bunyan": "1.x",
+    "chai": "4",
+    "mocha": "^11.8.0",
+    "nyc": "^17.1.0",
+    "sinon": "^22.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "5"
+  },
+  "engines": {
+    "node": ">= 18.0.0"
+  },
+  "scripts": {
+    "test": "yarn run lint && yarn run coverage",
+    "lint": "biome check src",
+    "lint:fix": "biome check --write src",
+    "coverage": "LOGGER_LEVEL=fatal nyc mocha dist/test/*.test.js",
+    "mocha": "mocha dist/test/*.test.js",
+    "build": "tsc",
+    "prepare": "yarn run build"
+  },
+  "files": [
+    "dist"
+  ]
+}
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "lib": ["ES2022"],
+    "types": ["node", "mocha", "chai", "sinon"],
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.7/schema.json",
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "style": {
+        "noNonNullAssertion": "off"
+      },
+      "suspicious": {
+        "noExplicitAny": "error"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "formatWithErrors": false,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "trailingCommas": "none"
+    }
+  }
+}
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          release-type: node
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/checkout@v4
+        if: ${{ steps.release.outputs.release_created }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          registry-url: 'https://registry.npmjs.org'
+        if: ${{ steps.release.outputs.release_created }}
+
+      - run: yarn install --frozen-lockfile
+        if: ${{ steps.release.outputs.release_created }}
+
+      - run: yarn build
+        if: ${{ steps.release.outputs.release_created }}
+
+      - run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        if: ${{ steps.release.outputs.release_created }}
+import CBuffer from 'CBuffer';
+import { EventEmitter } from 'node:events';
+import fs from 'node:fs';
+import net from 'node:net';
+import os from 'node:os';
+import tls from 'node:tls';
+import safeStringify from 'fast-safe-stringify';
+
+const levels = new Map<number, string>([
+  [10, 'trace'],
+  [20, 'debug'],
+  [30, 'info'],
+  [40, 'warn'],
+  [50, 'error'],
+  [60, 'fatal']
+]);
+
+// Keys that are manually constructed in the msg object and should be skipped
+// in the generic copy loop
+const IGNORED_KEYS: Record<string, boolean> = {
+  msg: true,
+  time: true,
+  v: true,
+  level: true,
+  pid: true
+};
+
+/**
+ * Helper to get the timestamp from the entry.
+ *
+ * @param time The time field from the entry.
+ * @returns The ISO string timestamp.
+ */
+function getTimestamp(time: unknown): string {
+  try {
+    if (time instanceof Date) {
+      return time.toISOString();
+    }
+    if (typeof time === 'string') {
+      return new Date(time).toISOString();
+    }
+    return new Date().toISOString();
+  } catch (_error) {
+    // If time is invalid, default to now
+    return new Date().toISOString();
+  }
+}
+
+/**
+ * Configuration options for the LogstashStream.
+ */
+export interface LogstashStreamOptions {
+  /** Log level (trace, debug, info, warn, error, fatal). */
+  level?: string;
+  /** Server name added to log metadata. Defaults to `os.hostname()`. */
+  server?: string;
+  /** Logstash host address. Defaults to `'127.0.0.1'`. */
+  host?: string;
+  /** Logstash TCP port. Defaults to `9999`. */
+  port?: number;
+  /** Application name added to log metadata. Defaults to `process.title`. */
+  appName?: string;
+  /** Process ID added to log metadata. Defaults to `process.pid`. */
+  pid?: number;
+  /** Tags to add to the log entry. Defaults to `['bunyan']`. */
+  tags?: string[];
+  /** Log type field. Optional. */
+  type?: string;
+  /** Enable SSL/TLS connection. Defaults to `false`. */
+  ssl_enable?: boolean;
+  /** Path to SSL key file. */
+  ssl_key?: string;
+  /** Path to SSL certificate file. */
+  ssl_cert?: string;
+  /** Path(s) to CA certificates. */
+  ca?: string | string[];
+  /** Passphrase for SSL key. */
+  ssl_passphrase?: string;
+  /** Size of the circular buffer for offline logs. Defaults to `10`. */
+  cbuffer_size?: number;
+  /** Maximum number of connection retries. Defaults to `4`. */
+  max_connect_retries?: number;
+  /** (Deprecated) Interval in ms between retries. Use retry_min instead. Defaults to `100`. */
+  retry_interval?: number;
+  /** Minimum interval in ms between retries (start of exponential backoff). Defaults to `100`. */
+  retry_min?: number;
+  /** Maximum interval in ms between retries. Defaults to `10000`. */
+  retry_max?: number;
+}
+
+/**
+ * This class implements the bunyan stream contract with a stream that
+ * sends data to logstash.
+ */
+export class LogstashStream extends EventEmitter {
+  /** The name of the stream (typically 'bunyan') */
+  public name: string;
+  /** The log level */
+  public level: string;
+  /** The server name */
+  public server: string;
+  /** Logstash host address */
+  public host: string;
+  /** Logstash TCP port */
+  public port: number;
+  /** Application name */
+  public application: string;
+  /** Process ID */
+  public pid: number;
+  /** Tags attached to log entries */
+  public tags: string[];
+  /** Log type field */
+  public type?: string;
+  /** Pre-computed source identifier (server/application) */
+  public source: string;
+  /** Whether SSL/TLS is enabled */
+  public ssl_enable: boolean;
+  /** Path to SSL key */
+  public ssl_key: string;
+  /** Path to SSL certificate */
+  public ssl_cert: string;
+  /** Path(s) to CA certificates */
+  public ca: string | string[];
+  /** SSL key passphrase */
+  public ssl_passphrase?: string;
+  /** Compiled TLS connection options */
+  public tlsOptions?: tls.ConnectionOptions;
+  /** Size of the log buffer */
+  public cbuffer_size: number;
+  /** Circular buffer queue for logs when offline */
+  public log_queue: CBuffer<string>;
+  /** Whether the stream is currently connected */
+  public connected: boolean;
+  /** The underlying socket */
+  public socket: net.Socket | tls.TLSSocket | null;
+  /** Current number of connection retries */
+  public retries: number;
+  /** Whether it is currently safe to write to the socket */
+  public canWriteToExternalSocket: boolean;
+  /** Maximum number of allowed retries */
+  public max_connect_retries: number;
+  /** Deprecated: Base interval for retries */
+  public retry_interval: number;
+  /** Minimum delay for exponential backoff */
+  public retry_min: number;
+  /** Maximum delay for exponential backoff */
+  public retry_max: number;
+  /** Whether the stream is actively trying to connect */
+  public connecting: boolean;
+  /** Whether the stream has gone permanently silent due to exhausted retries */
+  public silent: boolean;
+
+  /**
+   * Creates a new instance of LogstashStream from the options.
+   *
+   * @param options The constructions options.
+   */
+  constructor(options?: LogstashStreamOptions) {
+    super();
+    const opts = options || {};
+
+    this.name = 'bunyan';
+    this.level = opts.level || 'info';
+    this.server = opts.server || os.hostname();
+    this.host = opts.host || '127.0.0.1';
+    this.port = opts.port || 9999;
+    this.application = opts.appName || process.title;
+    this.pid = opts.pid || process.pid;
+    this.tags = opts.tags || ['bunyan'];
+    this.type = opts.type;
+
+    // Pre-compute source to avoid string concatenation on every write
+    this.source = `${this.server}/${this.application}`;
+
+    // ssl
+    this.ssl_enable = opts.ssl_enable || false;
+    this.ssl_key = opts.ssl_key || '';
+    this.ssl_cert = opts.ssl_cert || '';
+    this.ca = opts.ca || '';
+    this.ssl_passphrase = opts.ssl_passphrase || '';
+
+    if (this.ssl_enable) {
+      try {
+        this.tlsOptions = {
+          key: this.ssl_key ? fs.readFileSync(this.ssl_key) : undefined,
+          cert: this.ssl_cert ? fs.readFileSync(this.ssl_cert) : undefined,
+          passphrase: this.ssl_passphrase ? this.ssl_passphrase : undefined,
+          ca: Array.isArray(this.ca)
+            ? this.ca.map((filePath) => fs.readFileSync(filePath))
+            : this.ca
+              ? [fs.readFileSync(this.ca as string)]
+              : undefined
+        };
+      } catch (err: unknown) {
+        throw new Error(
+          `Failed to load SSL/TLS certificates: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    }
+
+    this.cbuffer_size = opts.cbuffer_size || 10;
+
+    // Connection state
+    this.log_queue = new CBuffer(this.cbuffer_size);
+    this.connected = false;
+    this.socket = null;
+    this.retries = -1;
+    this.canWriteToExternalSocket = false;
+
+    this.max_connect_retries =
+      typeof opts.max_connect_retries === 'number' ? opts.max_connect_retries : 4;
+    this.retry_interval = opts.retry_interval || 100;
+    this.retry_min = opts.retry_min || this.retry_interval || 100;
+    this.retry_max = opts.retry_max || 10000;
+    this.connecting = false;
+    this.silent = false;
+
+    this.connect();
+  }
+
+  /**
+   * Writes a log entry to the stream.
+   *
+   * @param entry The log entry to write (either a JSON string or an object).
+   */
+  public write(entry: unknown): void {
+    if (this.silent) {
+      return;
+    }
+
+    let rec: Record<string, unknown>;
+
+    if (typeof entry === 'string') {
+      try {
+        rec = JSON.parse(entry) as Record<string, unknown>;
+      } catch (e) {
+        this.emit('error', e);
+        return;
+      }
+    } else {
+      rec = entry as Record<string, unknown>;
+    }
+
+    let level = rec.level;
+
+    if (typeof level === 'number' && levels.has(level)) {
+      level = levels.get(level);
+    }
+
+    const timestamp = getTimestamp(rec.time);
+
+    const msg: Record<string, unknown> = {
+      '@timestamp': timestamp,
+      message: rec.msg,
+      tags: this.tags,
+      source: this.source,
+      level,
+      pid: this.pid
+    };
+
+    if (typeof this.type === 'string') {
+      msg.type = this.type;
+    }
+
+    // Copy other properties
+    const keys = Object.keys(rec);
+    for (let i = 0; i < keys.length; i += 1) {
+      const key = keys[i];
+      if (!IGNORED_KEYS[key]) {
+        msg[key] = rec[key];
+      }
+    }
+
+    this.send(safeStringify(msg));
+  }
+
+  /**
+   * Helper method to establish a standard TCP connection.
+   *
+   * @param onConnectCallback Callback invoked when the connection is successfully established.
+   */
+  private connectTCP(onConnectCallback: () => void): void {
+    this.socket = new net.Socket();
+    this.socket.connect(this.port, this.host, () => {
+      if (this.socket) {
+        this.socket.setKeepAlive(true, 60000);
+      }
+      onConnectCallback();
+    });
+  }
+
+  /**
+   * Helper method to establish a secure TLS connection.
+   *
+   * @param onConnectCallback Callback invoked when the connection is successfully established.
+   */
+  private connectTLS(onConnectCallback: () => void): void {
+    this.socket = tls.connect(this.port, this.host, this.tlsOptions, () => {
+      if (this.socket) {
+        this.socket.setEncoding('utf-8');
+        this.socket.setKeepAlive(true, 60000); // Keep connection alive
+      }
+      onConnectCallback();
+    });
+  }
+
+  /**
+   * Connects the stream to the remote logstash server specified in the options.
+   */
+  public connect(): void {
+    this.retries += 1;
+    this.connecting = true;
+
+    const onConnectCallback = () => {
+      this.connecting = false;
+      this.announce();
+    };
+
+    const onError = (err: Error) => {
+      this.connecting = false;
+      this.connected = false;
+      if (this.socket) {
+        this.socket.destroy();
+      }
+      this.socket = null;
+      this.emit('error', err);
+    };
+
+    try {
+      if (this.ssl_enable) {
+        this.connectTLS(onConnectCallback);
+      } else {
+        this.connectTCP(onConnectCallback);
+      }
+    } catch (e) {
+      this.socket = null;
+      this.connecting = false;
+      process.nextTick(() => this.emit('error', e));
+      return;
+    }
+
+    if (!this.socket) return;
+
+    this.socket.unref();
+    this.socket.on('error', onError);
+
+    // Explicit connect listener to match old behavior/tests and handle TCP connect event
+    this.socket.on('connect', () => {
+      this.retries = 0;
+      this.canWriteToExternalSocket = true;
+      this.emit('connect');
+    });
+
+    this.socket.on('timeout', () => {
+      if (this.socket && this.socket.readyState !== 'open') {
+        this.socket.destroy();
+      }
+      this.emit('timeout');
+    });
+
+    this.socket.on('drain', () => {
+      this.canWriteToExternalSocket = true;
+      this.flush();
+    });
+
+    this.socket.on('close', () => {
+      this.connected = false;
+
+      if (this.max_connect_retries < 0 || this.retries < this.max_connect_retries) {
+        if (!this.connecting) {
+          const delay = Math.min(this.retry_max, this.retry_min * 2 ** this.retries);
+          setTimeout(() => {
+            this.connect();
+          }, delay).unref();
+        }
+      } else {
+        // Stop retrying, clear queue and go silent to prevent memory leaks
+        this.log_queue = new CBuffer(this.cbuffer_size);
+        this.silent = true;
+      }
+      this.emit('close');
+    });
+  }
+
+  /**
+   * Announces that the stream is connected. Will flush any messages in the queue.
+   */
+  public announce(): void {
+    this.connected = true;
+    this.flush();
+  }
+
+  /**
+   * Writes the provided string to the external socket.
+   * Updates state appropriately based on the write success.
+   *
+   * @param payload The payload to write.
+   * @returns true if the write was completely flushed, false if buffering occurred.
+   */
+  private writeToSocket(payload: string): boolean {
+    if (!this.socket) {
+      return false;
+    }
+    try {
+      const result = this.socket.write(payload);
+      if (!result) {
+        this.canWriteToExternalSocket = false;
+      }
+      return result;
+    } catch (e) {
+      this.emit('error', e);
+      return false;
+    }
+  }
+
+  /**
+   * Flushes the queue, sending all messages that have not been sent yet to the remote
+   * destination.
+   *
+   * It uses a batching mechanism to reduce the number of system calls.
+   */
+  public flush(): void {
+    if (!this.connected || !this.socket) return;
+
+    const MAX_BATCH_SIZE = 16 * 1024; // 16KB batch size limit
+    const batch: string[] = [];
+    let batchSize = 0;
+
+    // Check if we have items in the queue
+    while (this.log_queue.length > 0) {
+      const message = this.log_queue.shift() as string;
+      const entry = `${message}\n`;
+      // Optimization: Use string length as proxy for byte length.
+      // It is significantly faster than Buffer.byteLength().
+      // For ASCII it is accurate. For multibyte, it underestimates,
+      // which is fine as 16KB is just a soft limit for batching.
+      const entrySize = entry.length;
+
+      batch.push(entry);
+      batchSize += entrySize;
+
+      // If the chunk exceeds the batch size, write it to the socket
+      if (batchSize >= MAX_BATCH_SIZE) {
+        const success = this.writeToSocket(batch.join(''));
+        batch.length = 0;
+        batchSize = 0;
+
+        if (!success) {
+          // We can't write more right now, waiting for drain
+          return;
+        }
+      }
+    }
+
+    // Write any remaining data
+    if (batch.length > 0) {
+      this.writeToSocket(batch.join(''));
+    }
+  }
+
+  /**
+   * Immediately writes a string to the underlying socket.
+   *
+   * @param message The string to write.
+   */
+  public sendLog(message: string): void {
+    this.writeToSocket(`${message}\n`);
+  }
+
+  /**
+   * Sends a string message. The message will be immediately sent if the stream
+   * is already connected, or queued if the stream is not connected yet.
+   * @param message The string to send
+   */
+  public send(message: string): void {
+    // If the queue is empty and we are connected and can write, send directly.
+    // This avoids unnecessary buffering and shifting.
+    if (this.log_queue.length === 0 && this.connected && this.canWriteToExternalSocket) {
+      this.sendLog(message);
+    } else {
+      this.log_queue.push(message);
+      if (this.connected && this.canWriteToExternalSocket) {
+        this.flush();
+      }
+    }
+  }
+}
+
+/**
+ * Creates a new instance of LogstashStream from the options.
+ *
+ * @param options The constructions options. See the constructor for details.
+ *
+ * @returns The bunyan stream that sends data to logstash
+ */
+export function createStream(options?: LogstashStreamOptions): LogstashStream {
+  return new LogstashStream(options);
+}
+# bunyan-logstash-tcp-fork
+
+[![CI](https://github.com/juninmd/bunyan-logstash-tcp-fork/actions/workflows/ci.yml/badge.svg)](https://github.com/juninmd/bunyan-logstash-tcp-fork/actions/workflows/ci.yml)
+[![npm version](https://badge.fury.io/js/bunyan-logstash-tcp-fork.svg)](https://badge.fury.io/js/bunyan-logstash-tcp-fork)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
+A modern, strongly-typed [Bunyan](https://github.com/trentm/node-bunyan) stream for sending logs to Logstash via TCP or TLS/SSL.
+
+This package is a modernized fork designed for Node.js 18+ with full TypeScript support, robust connection handling, exponential backoff retries, and high-performance log batching.
+
+## Features
+
+- **TypeScript Native:** Strict types for a great developer experience.
+- **TCP & TLS/SSL:** Support for both standard and secure TCP connections to Logstash.
+- **Reliability:** Built-in connection retries with exponential backoff and connection state management.
+- **Performance:** Implements log batching, circular buffering for offline logs, and optimized JSON serialization using `fast-safe-stringify`.
+- **Modern Syntax:** Refactored without legacy code to maintain low overhead and high performance.
+
+## Installation
+
+Install using your preferred package manager:
+
+```bash
+npm install bunyan-logstash-tcp-fork bunyan
+# or
+yarn add bunyan-logstash-tcp-fork bunyan
+# or
+pnpm add bunyan-logstash-tcp-fork bunyan
+# or
+bun add bunyan-logstash-tcp-fork bunyan
+```
+
+## Usage
+
+### TypeScript Example
+
+```typescript
+import bunyan from 'bunyan';
+import { createStream } from 'bunyan-logstash-tcp-fork';
+
+const logstashStream = createStream({
+  host: '127.0.0.1',
+  port: 5000,
+  max_connect_retries: -1, // Retry infinitely
+  retry_min: 1000, // 1 second minimum delay
+  retry_max: 60000 // 60 seconds maximum delay
+});
+
+logstashStream.on('error', (err) => {
+  console.error('Logstash Stream Error:', err);
+});
+
+const logger = bunyan.createLogger({
+  name: 'my-app',
+  streams: [
+    {
+      type: 'raw',
+      level: 'info',
+      stream: logstashStream
+    }
+  ]
+});
+
+logger.info({ user: 'alice' }, 'User logged in successfully');
+```
+
+### JavaScript Example (CommonJS)
+
+```javascript
+const bunyan = require('bunyan');
+const { createStream } = require('bunyan-logstash-tcp-fork');
+
+const logstashStream = createStream({
+  host: 'logstash.internal.network',
+  port: 5044,
+  ssl_enable: true,
+  ssl_key: '/path/to/key.pem',
+  ssl_cert: '/path/to/cert.pem',
+  ca: ['/path/to/ca.pem']
+});
+
+const logger = bunyan.createLogger({
+  name: 'my-secure-app',
+  streams: [
+    {
+      type: 'raw',
+      level: 'warn',
+      stream: logstashStream
+    }
+  ]
+});
+
+logger.warn('This log is securely transmitted over TLS.');
+```
+
+## Configuration Options
+
+When calling `createStream(options)`, the following configuration options are available:
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `host` | `string` | `'127.0.0.1'` | Logstash server hostname or IP address. |
+| `port` | `number` | `9999` | Logstash server TCP port. |
+| `max_connect_retries` | `number` | `4` | Max reconnection attempts. Use `-1` for infinite retries. When exceeded, the stream enters a permanent silent mode to prevent memory leaks. |
+| `retry_min` | `number` | `100` | Minimum wait time (in ms) before retrying a connection (starts exponential backoff). |
+| `retry_max` | `number` | `10000` | Maximum wait time (in ms) between connection retries. |
+| `cbuffer_size` | `number` | `10` | Number of unwritten log messages to buffer while offline before dropping the oldest logs. |
+| `level` | `string` | `'info'` | Default log level threshold. |
+| `appName` | `string` | `process.title` | Name of the application (adds `source` field). |
+| `server` | `string` | `os.hostname()` | Name of the server (adds `source` field). |
+| `pid` | `number` | `process.pid` | Process ID. |
+| `tags` | `string[]` | `['bunyan']` | Logstash tags to attach to every payload. |
+| `type` | `string` | `undefined` | Logstash `type` field value. |
+| `ssl_enable` | `boolean` | `false` | Enable TLS/SSL connection to Logstash. |
+| `ssl_key` | `string` | `''` | File path to the SSL private key. |
+| `ssl_cert` | `string` | `''` | File path to the SSL certificate. |
+| `ca` | `string[] \| string` | `''` | File path(s) to the Certificate Authority bundle. |
+| `ssl_passphrase` | `string` | `''` | Passphrase used for the SSL private key, if applicable. |
+
+## Network Behavior
+
+- **TCP Keep-Alive:** The stream actively uses TCP Keep-Alive to detect dead connections and proactively attempt reconnections.
+- **Buffering & Backpressure:** Logs sent while the stream is disconnected are buffered in a FIFO `CBuffer` up to `cbuffer_size`. The stream correctly monitors `socket.write` returns; if the socket buffer fills up, it waits for the `drain` event before flushing the rest of the queue, effectively handling backpressure.
+- **Batching:** Flushes transmit buffered logs using chunking (batch sizes up to ~16KB) to improve throughput and reduce underlying system calls.
+- **Reconnects:** It uses an exponential backoff strategy calculated as `retry_min * (2 ** retries)`, capped at `retry_max`. If retries exceed `max_connect_retries` (and it's not set to `-1`), the stream halts gracefully, stopping further attempts and ignoring subsequent writes to avoid boundless memory exhaustion.
+
+## License
+
+[MIT](LICENSE.md)

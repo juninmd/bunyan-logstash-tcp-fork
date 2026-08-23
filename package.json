@@ -23,7 +23,7 @@
     "bunyan": "1.x"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.7",
+    "@biomejs/biome": "2.5.10",
     "@types/bunyan": "^1.8.11",
     "@types/chai": "4",
     "@types/mocha": "^10.0.10",

@@ -9,30 +9,30 @@ on:
       - main
 
 jobs:
-  build-and-test:
+  test:
     runs-on: ubuntu-latest
-
     strategy:
       matrix:
         node-version: [18.x, 20.x, 22.x]
 
     steps:
-    - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'yarn'
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'yarn'
 
-    - name: Install Dependencies
-      run: yarn install --frozen-lockfile
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
 
-    - name: Biome Lint
-      run: yarn lint
+      - name: Run build (TypeScript)
+        run: yarn run build
 
-    - name: TypeScript Compile
-      run: yarn build
+      - name: Run lint (Biome)
+        run: yarn run lint
 
-    - name: Test & Coverage
-      run: yarn test
+      - name: Run tests with coverage
+        run: yarn run coverage

@@ -14,7 +14,7 @@ This package is a modernized fork designed for Node.js 18+ with full TypeScript 
 - **TCP & TLS/SSL:** Support for both standard and secure TCP connections to Logstash.
 - **Reliability:** Built-in connection retries with exponential backoff and connection state management.
 - **Performance:** Implements log batching, circular buffering for offline logs, and optimized JSON serialization using `fast-safe-stringify`.
-- **Modern Syntax:** Refactored without legacy code to maintain low overhead and high performance.
+- **Modern Syntax:** Refactored strictly adhering to Clean Code, SOLID, DRY, and KISS principles without legacy code to maintain low overhead and high performance. Includes automated builds via `Biome`.
 
 ## Installation
 

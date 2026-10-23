@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" xml:space="preserve" role="img" aria-labelledby="t d">
+  <title id="t">bunyan-logstash-tcp-fork</title>
+  <desc id="d">Left: createStream and logger.info code. Right: excerpt of the JSON line Logstash receives.</desc>
+  <rect width="1280" height="640" rx="24" fill="#0f172a"/>
+  <text x="60" y="130" fill="#f8fafc" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="72" font-weight="700">bunyan-logstash-tcp-fork</text>
+  <text x="60" y="190" fill="#94a3b8" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="32">Bunyan logs to Logstash over TCP or TLS/SSL</text>
+  <rect x="40" y="230" width="560" height="370" rx="16" fill="#1e293b"/>
+  <text x="70" y="285" fill="#4ade80" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="28" font-weight="600">Your code</text>
+  <g font-family="Consolas, 'Courier New', monospace" font-size="28" fill="#e2e8f0">
+    <text x="70" y="335">const stream = createStream({</text>
+    <text x="70" y="371">  host: '127.0.0.1',</text>
+    <text x="70" y="407">  port: 5000</text>
+    <text x="70" y="443">});</text>
+    <text x="70" y="479">logger.info(</text>
+    <text x="70" y="515">  { user: 'alice' },</text>
+    <text x="70" y="551">  'User logged in successfully'</text>
+    <text x="70" y="587">);</text>
+  </g>
+  <rect x="640" y="230" width="600" height="370" rx="16" fill="#1e293b"/>
+  <text x="670" y="285" fill="#4ade80" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="28" font-weight="600">Logstash receives (excerpt)</text>
+  <g font-family="Consolas, 'Courier New', monospace" font-size="28" fill="#e2e8f0">
+    <text x="670" y="335">{</text>
+    <text x="670" y="371">  "message": "User logged…",</text>
+    <text x="670" y="407">  "level": "info",</text>
+    <text x="670" y="443">  "source": "example-host/my-app",</text>
+    <text x="670" y="479">  "user": "alice",</text>
+    <text x="670" y="515">  …</text>
+    <text x="670" y="551">}</text>
+  </g>
+</svg>

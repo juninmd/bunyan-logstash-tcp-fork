@@ -37,3 +37,44 @@ export const IGNORED_KEYS: Record<string, boolean> = {
   level: true,
   pid: true
 };
+
+/**
+ * Formats a raw log record into a Logstash-compatible object.
+ *
+ * @param rec The raw parsed JSON or object entry.
+ * @param tags The tags to attach to the log.
+ * @param source The source server and app name.
+ * @param pid The process ID.
+ * @param type Optional log type.
+ * @returns The formatted log message.
+ */
+export function formatMessage(
+  rec: Record<string, unknown>,
+  tags: string[],
+  source: string,
+  pid: number,
+  type?: string
+): Record<string, unknown> {
+  let level = rec.level;
+  if (typeof level === 'number' && levels.has(level)) {
+    level = levels.get(level);
+  }
+
+  const msg: Record<string, unknown> = {
+    '@timestamp': getTimestamp(rec.time),
+    message: rec.msg,
+    tags,
+    source,
+    level,
+    pid
+  };
+
+  if (typeof type === 'string') msg.type = type;
+
+  const keys = Object.keys(rec);
+  for (let i = 0; i < keys.length; i += 1) {
+    if (!IGNORED_KEYS[keys[i]]) msg[keys[i]] = rec[keys[i]];
+  }
+
+  return msg;
+}

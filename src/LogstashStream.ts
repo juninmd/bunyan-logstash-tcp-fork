@@ -3,7 +3,7 @@ import safeStringify from 'fast-safe-stringify';
 import { connectTCP, connectTLS } from './connection';
 import { LogstashStreamBase } from './LogstashStreamBase';
 import type { LogstashStreamOptions } from './types';
-import { getTimestamp, IGNORED_KEYS, levels } from './utils';
+import { formatMessage } from './utils';
 
 /**
  * LogstashStream implements a Bunyan stream that sends data to Logstash via TCP or TLS.
@@ -39,27 +39,7 @@ export class LogstashStream extends LogstashStreamBase {
       rec = entry as Record<string, unknown>;
     }
 
-    let level = rec.level;
-    if (typeof level === 'number' && levels.has(level)) {
-      level = levels.get(level);
-    }
-
-    const msg: Record<string, unknown> = {
-      '@timestamp': getTimestamp(rec.time),
-      message: rec.msg,
-      tags: this.tags,
-      source: this.source,
-      level,
-      pid: this.pid
-    };
-
-    if (typeof this.type === 'string') msg.type = this.type;
-
-    const keys = Object.keys(rec);
-    for (let i = 0; i < keys.length; i += 1) {
-      if (!IGNORED_KEYS[keys[i]]) msg[keys[i]] = rec[keys[i]];
-    }
-
+    const msg = formatMessage(rec, this.tags, this.source, this.pid, this.type);
     this.send(safeStringify(msg));
   }
 

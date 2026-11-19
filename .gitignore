@@ -3,4 +3,12 @@ node_modules
 coverage/
 dist/
 .nyc_output
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.p12
+secrets/
+config/secrets.yml
 dist

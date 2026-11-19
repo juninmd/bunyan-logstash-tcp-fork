@@ -34,8 +34,8 @@
     "mocha": "^10",
     "nyc": "^17",
     "sinon": "^22.1.0",
-"ts-node": "^10.9.2",
-    "typescript": "5.9.3"
+    "ts-node": "10.9.2",
+    "typescript": "7.0.2"
   },
   "engines": {
     "node": ">= 18.0.0"

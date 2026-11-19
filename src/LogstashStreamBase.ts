@@ -72,47 +72,47 @@ export class LogstashStreamBase extends EventEmitter {
    *
    * @param options The configurations options.
    */
-   constructor(options?: LogstashStreamOptions) {
-     super();
+  constructor(options?: LogstashStreamOptions) {
+    super();
 
-     const opts = options || {};
+    const opts = options || {};
 
-     this.name = 'bunyan';
-     this.level = opts.level || 'info';
-     this.server = opts.server || os.hostname();
-     this.host = opts.host || '127.0.0.1';
-     this.port = opts.port || 9999;
-     this.application = opts.appName || process.title;
-     this.pid = opts.pid || process.pid;
-     this.tags = opts.tags || ['bunyan'];
-      this.type = opts.type;
+    this.name = 'bunyan';
+    this.level = opts.level || 'info';
+    this.server = opts.server || os.hostname();
+    this.host = opts.host || '127.0.0.1';
+    this.port = opts.port || 9999;
+    this.application = opts.appName || process.title;
+    this.pid = opts.pid || process.pid;
+    this.tags = opts.tags || ['bunyan'];
+    this.type = opts.type;
 
-     this.source = `${this.server}/${this.application}`;
+    this.source = `${this.server}/${this.application}`;
 
-     this.ssl_enable = opts.ssl_enable || false;
-     this.ssl_key = opts.ssl_key || '';
-     this.ssl_cert = opts.ssl_cert || '';
-     this.ca = opts.ca || '';
-     this.ssl_passphrase = opts.ssl_passphrase || '';
+    this.ssl_enable = opts.ssl_enable || false;
+    this.ssl_key = opts.ssl_key || '';
+    this.ssl_cert = opts.ssl_cert || '';
+    this.ca = opts.ca || '';
+    this.ssl_passphrase = opts.ssl_passphrase || '';
 
-     if (this.ssl_enable) {
-       this.tlsOptions = createTlsOptions(opts);
-     }
+    if (this.ssl_enable) {
+      this.tlsOptions = createTlsOptions(opts);
+    }
 
-     this.cbuffer_size = opts.cbuffer_size || 10;
-     this.log_queue = new CBuffer(this.cbuffer_size);
-     this.connected = false;
-     this.socket = null;
+    this.cbuffer_size = opts.cbuffer_size || 10;
+    this.log_queue = new CBuffer(this.cbuffer_size);
+    this.connected = false;
+    this.socket = null;
 
-     this.retries = -1;
-     this.canWriteToExternalSocket = false;
+    this.retries = -1;
+    this.canWriteToExternalSocket = false;
 
-     this.max_connect_retries =
-       typeof opts.max_connect_retries === 'number' ? opts.max_connect_retries : 4;
-     this.retry_interval = opts.retry_interval || 100;
-     this.retry_min = opts.retry_min || this.retry_interval || 100;
-     this.retry_max = opts.retry_max || 10000;
-     this.connecting = false;
-     this.silent = false;
+    this.max_connect_retries =
+      typeof opts.max_connect_retries === 'number' ? opts.max_connect_retries : 4;
+    this.retry_interval = opts.retry_interval || 100;
+    this.retry_min = opts.retry_min || this.retry_interval || 100;
+    this.retry_max = opts.retry_max || 10000;
+    this.connecting = false;
+    this.silent = false;
   }
 }

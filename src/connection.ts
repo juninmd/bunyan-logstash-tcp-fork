@@ -5,7 +5,7 @@ import type { LogstashStreamOptions } from './types.js';
 
 /**
  * Creates TLS options from the configuration.
- * 
+ *
  * @param opts The stream options.
  * @returns The TLS options object or throws an error.
  */
@@ -30,7 +30,7 @@ export function createTlsOptions(opts: LogstashStreamOptions): tls.ConnectionOpt
 
 /**
  * Connects via standard TCP.
- * 
+ *
  * @param port The port to connect to.
  * @param host The host to connect to.
  * @returns A promise that resolves with the TCP socket.
@@ -49,7 +49,7 @@ export async function connectTCP(port: number, host: string): Promise<net.Socket
 
 /**
  * Connects via secure TLS.
- * 
+ *
  * @param port The port to connect to.
  * @param host The host to connect to.
  * @param tlsOptions The TLS options.

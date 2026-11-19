@@ -229,11 +229,14 @@ describe('LogstashStream', () => {
       const stream = createStream();
 
       // Wait for the connect promise from the stream to resolve
-      stream.connect().then(() => {
-        expect(stream.socket).to.equal(socketMock);
-        expect(socketMock.keepAlive).to.be.true;
-        done();
-      }).catch(done);
+      stream
+        .connect()
+        .then(() => {
+          expect(stream.socket).to.equal(socketMock);
+          expect(socketMock.keepAlive).to.be.true;
+          done();
+        })
+        .catch(done);
     });
 
     it('Should connect via TLS when ssl_enable is true', (done) => {
@@ -250,12 +253,15 @@ describe('LogstashStream', () => {
       const stream = createStream({ ssl_enable: true, ssl_key: 'dummy' });
 
       // Wait for the connect promise from the stream to resolve
-      stream.connect().then(() => {
-        expect(stream.socket).to.equal(socketMock);
-        expect(socketMock.encoding).to.equal('utf-8');
-        expect(socketMock.keepAlive).to.be.true;
-        done();
-      }).catch(done);
+      stream
+        .connect()
+        .then(() => {
+          expect(stream.socket).to.equal(socketMock);
+          expect(socketMock.encoding).to.equal('utf-8');
+          expect(socketMock.keepAlive).to.be.true;
+          done();
+        })
+        .catch(done);
     });
 
     it('Should handle socket timeout', (done) => {
@@ -266,12 +272,15 @@ describe('LogstashStream', () => {
       const emitSpy = sandbox.spy(stream, 'emit');
 
       // Manually trigger connect and then timeout
-      stream.connect().then(() => {
-        socketMock.emit('timeout');
-        expect(socketMock.destroyCalled).to.be.true;
-        expect(emitSpy.calledWith('timeout')).to.be.true;
-        done();
-      }).catch(done);
+      stream
+        .connect()
+        .then(() => {
+          socketMock.emit('timeout');
+          expect(socketMock.destroyCalled).to.be.true;
+          expect(emitSpy.calledWith('timeout')).to.be.true;
+          done();
+        })
+        .catch(done);
     });
 
     it('Should handle socket drain event', (done) => {
@@ -282,13 +291,16 @@ describe('LogstashStream', () => {
       const flushStub = sandbox.stub(stream, 'flush');
 
       // Manually trigger connect and then drain
-      stream.connect().then(() => {
-        flushStub.resetHistory();
-        socketMock.emit('drain');
-        expect(stream.canWriteToExternalSocket).to.be.true;
-        expect(flushStub.called).to.be.true;
-        done();
-      }).catch(done);
+      stream
+        .connect()
+        .then(() => {
+          flushStub.resetHistory();
+          socketMock.emit('drain');
+          expect(stream.canWriteToExternalSocket).to.be.true;
+          expect(flushStub.called).to.be.true;
+          done();
+        })
+        .catch(done);
     });
 
     it('Should handle connection retries with exponential backoff', async () => {
@@ -315,27 +327,27 @@ describe('LogstashStream', () => {
       stream.retries = 0;
       stream.connecting = false;
       stream.emit('close'); // Simulates first failure
-      
+
       const triggerClose = () => {
         const delay = Math.min(stream.retry_max, stream.retry_min * 2 ** stream.retries);
         setTimeout(() => {
           stream.connect();
         }, delay);
       };
-      
+
       triggerClose();
-      
+
       clock.tick(99);
       await clock.tickAsync(10);
       expect(stream.retries).to.equal(1);
-      
+
       stream.connecting = false;
       triggerClose();
-      
+
       clock.tick(199);
       await clock.tickAsync(10);
       expect(stream.retries).to.equal(2);
-      
+
       clock.restore();
     });
 

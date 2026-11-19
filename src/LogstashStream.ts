@@ -1,7 +1,7 @@
 import CBuffer from 'CBuffer';
-import safeStringifyModule from 'fast-safe-stringify';
 import type net from 'node:net';
 import type tls from 'node:tls';
+import safeStringifyModule from 'fast-safe-stringify';
 import { connectTCP, connectTLS } from './connection.js';
 import { LogstashStreamBase } from './LogstashStreamBase.js';
 import type { LogstashStreamOptions } from './types.js';

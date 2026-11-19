@@ -31,8 +31,8 @@
     "@types/sinon": "^22.0.0",
     "bunyan": "1.x",
     "chai": "4",
-    "mocha": "^10",
-    "nyc": "^17",
+    "mocha": "^12",
+    "nyc": "^18",
     "sinon": "^22.1.0",
     "ts-node": "10.9.2",
     "typescript": "7.0.2"

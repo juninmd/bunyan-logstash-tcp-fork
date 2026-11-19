@@ -176,6 +176,26 @@ describe('LogstashStream', () => {
       expect(parsed).to.have.property('@timestamp');
     });
 
+    // SECURITY: safely serialize malicious input without interpreting as code
+    it('Should safely serialize malicious string input (e.g., SQL injection)', () => {
+      const sqlPayload = "'; DROP TABLE users; --";
+      stream.write(JSON.stringify({ msg: sqlPayload, level: 30 }));
+      expect(sendStub.callCount).to.equal(1);
+      const parsed = JSON.parse(sendStub.firstCall.args[0]);
+      expect(parsed).to.have.property('message', sqlPayload);
+    });
+
+    // SECURITY: safely serialize XSS payload
+    it('Should safely serialize XSS payload', () => {
+      const xssPayload = "<script>alert('XSS')</script>";
+      stream.write(JSON.stringify({ msg: xssPayload, level: 30 }));
+      expect(sendStub.callCount).to.equal(1);
+      const parsed = JSON.parse(sendStub.firstCall.args[0]);
+      expect(parsed).to.have.property('message', xssPayload);
+    });
+
+    it('Should handle invalid JSON string entry by emitting error', () => {
+
     it('Should handle invalid JSON string entry by emitting error', () => {
       stream.on('error', () => {}); // add error listener to prevent uncaught exception bubbling up in test
       const emitSpy = sandbox.spy(stream, 'emit');

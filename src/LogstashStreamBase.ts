@@ -34,7 +34,7 @@ export class LogstashStreamBase extends EventEmitter {
   public ssl_key: string;
   /** Path to SSL cert */
   public ssl_cert: string;
-  /** Path to CA cert(s) */
+  /** Path(s) to CA cert(s) */
   public ca: string | string[];
   /** Passphrase for SSL key */
   public ssl_passphrase?: string;
@@ -72,45 +72,46 @@ export class LogstashStreamBase extends EventEmitter {
    *
    * @param options The configurations options.
    */
-  constructor(options?: LogstashStreamOptions) {
-    super();
-    const opts = options || {};
+   constructor(options?: LogstashStreamOptions) {
+     super();
 
-    this.name = 'bunyan';
-    this.level = opts.level || 'info';
-    this.server = opts.server || os.hostname();
-    this.host = opts.host || '127.0.0.1';
-    this.port = opts.port || 9999;
-    this.application = opts.appName || process.title;
-    this.pid = opts.pid || process.pid;
-    this.tags = opts.tags || ['bunyan'];
-    this.type = opts.type;
+     const opts = options || {};
 
-    this.source = `${this.server}/${this.application}`;
+     this.name = 'bunyan';
+     this.level = opts.level || 'info';
+     this.server = opts.server || os.hostname();
+     this.host = opts.host || '127.0.0.1';
+     this.port = opts.port || 9999;
+     this.application = opts.appName || process.title;
+     this.pid = opts.pid || process.pid;
+     this.tags = opts.tags || ['bunyan'];
 
-    this.ssl_enable = opts.ssl_enable || false;
-    this.ssl_key = opts.ssl_key || '';
-    this.ssl_cert = opts.ssl_cert || '';
-    this.ca = opts.ca || '';
-    this.ssl_passphrase = opts.ssl_passphrase || '';
+     this.source = `${this.server}/${this.application}`;
 
-    if (this.ssl_enable) {
-      this.tlsOptions = createTlsOptions(opts);
-    }
+     this.ssl_enable = opts.ssl_enable || false;
+     this.ssl_key = opts.ssl_key || '';
+     this.ssl_cert = opts.ssl_cert || '';
+     this.ca = opts.ca || '';
+     this.ssl_passphrase = opts.ssl_passphrase || '';
 
-    this.cbuffer_size = opts.cbuffer_size || 10;
-    this.log_queue = new CBuffer(this.cbuffer_size);
-    this.connected = false;
-    this.socket = null;
-    this.retries = -1;
-    this.canWriteToExternalSocket = false;
+     if (this.ssl_enable) {
+       this.tlsOptions = createTlsOptions(opts);
+     }
 
-    this.max_connect_retries =
-      typeof opts.max_connect_retries === 'number' ? opts.max_connect_retries : 4;
-    this.retry_interval = opts.retry_interval || 100;
-    this.retry_min = opts.retry_min || this.retry_interval || 100;
-    this.retry_max = opts.retry_max || 10000;
-    this.connecting = false;
-    this.silent = false;
+     this.cbuffer_size = opts.cbuffer_size || 10;
+     this.log_queue = new CBuffer(this.cbuffer_size);
+     this.connected = false;
+     this.socket = null;
+
+     this.retries = -1;
+     this.canWriteToExternalSocket = false;
+
+     this.max_connect_retries =
+       typeof opts.max_connect_retries === 'number' ? opts.max_connect_retries : 4;
+     this.retry_interval = opts.retry_interval || 100;
+     this.retry_min = opts.retry_min || this.retry_interval || 100;
+     this.retry_max = opts.retry_max || 10000;
+     this.connecting = false;
+     this.silent = false;
   }
 }

@@ -20,40 +20,30 @@ export class LogstashStream extends LogstashStreamBase {
   }
 
   /**
-   * Writes a log entry to the stream.
-   *
-   * @param entry The log entry (either a JSON string or an object).
-   */
-  public write(entry: unknown): void {
-    if (this.silent) return;
-
-    let rec: Record<string, unknown>;
-    if (typeof entry === 'string') {
-      try {
-        rec = JSON.parse(entry) as Record<string, unknown>;
-      } catch (e) {
-        this.emit('error', e);
-        return;
-      }
-    } else {
-      rec = entry as Record<string, unknown>;
-    }
-
-    const msg = formatMessage(rec, this.tags, this.source, this.pid, this.type);
-    this.send(safeStringify(msg));
-  }
-
-  /**
    * Connects to the remote Logstash server.
    */
-  public connect(): void {
+  public async connect(): Promise<void> {
     this.retries += 1;
     this.connecting = true;
 
-    const onConnectCallback = () => {
+    let socket: net.Socket | tls.TLSSocket | null;
+    try {
+      if (this.ssl_enable && this.tlsOptions) {
+        socket = await connectTLS(this.port, this.host, this.tlsOptions);
+      } else {
+        socket = await connectTCP(this.port, this.host);
+      }
+    } catch (e) {
+      this.socket = null;
       this.connecting = false;
-      this.announce();
-    };
+      process.nextTick(() => this.emit('error', e));
+      return;
+    }
+
+    this.socket = socket;
+
+    if (!this.socket) return;
+    this.socket.unref();
 
     const onError = (err: Error) => {
       this.connecting = false;
@@ -63,27 +53,15 @@ export class LogstashStream extends LogstashStreamBase {
       this.emit('error', err);
     };
 
-    try {
-      if (this.ssl_enable && this.tlsOptions) {
-        this.socket = connectTLS(this.port, this.host, this.tlsOptions, onConnectCallback);
-      } else {
-        this.socket = connectTCP(this.port, this.host, onConnectCallback);
-      }
-    } catch (e) {
-      this.socket = null;
-      this.connecting = false;
-      process.nextTick(() => this.emit('error', e));
-      return;
-    }
-
-    if (!this.socket) return;
-    this.socket.unref();
     this.socket.on('error', onError);
 
-    this.socket.on('connect', () => {
-      this.retries = 0;
-      this.canWriteToExternalSocket = true;
-      this.emit('connect');
+    await new Promise<void>((resolve) => {
+      this.socket!.on('connect', () => {
+        this.retries = 0;
+        this.canWriteToExternalSocket = true;
+        this.emit('connect');
+        resolve();
+      });
     });
 
     this.socket.on('timeout', () => {
@@ -117,6 +95,30 @@ export class LogstashStream extends LogstashStreamBase {
   public announce(): void {
     this.connected = true;
     this.flush();
+  }
+
+  /**
+   * Writes a log entry to the stream.
+   *
+   * @param entry The log entry (either a JSON string or an object).
+   */
+  public write(entry: unknown): void {
+    if (this.silent) return;
+
+    let rec: Record<string, unknown>;
+    if (typeof entry === 'string') {
+      try {
+        rec = JSON.parse(entry) as Record<string, unknown>;
+      } catch (e) {
+        this.emit('error', e);
+        return;
+      }
+    } else {
+      rec = entry as Record<string, unknown>;
+    }
+
+    const msg = formatMessage(rec, this.tags, this.source, this.pid, this.type);
+    this.send(safeStringify(msg));
   }
 
   /**

@@ -5,7 +5,7 @@ import type { LogstashStreamOptions } from './types';
 
 /**
  * Creates TLS options from the configuration.
- *
+ * 
  * @param opts The stream options.
  * @returns The TLS options object or throws an error.
  */
@@ -30,40 +30,42 @@ export function createTlsOptions(opts: LogstashStreamOptions): tls.ConnectionOpt
 
 /**
  * Connects via standard TCP.
- *
+ * 
  * @param port The port to connect to.
  * @param host The host to connect to.
- * @param onConnect Callback invoked on success.
+ * @returns A promise that resolves with the TCP socket.
  * @returns The TCP socket.
  */
-export function connectTCP(port: number, host: string, onConnect: () => void): net.Socket {
-  const socket = new net.Socket();
-  socket.connect(port, host, () => {
-    socket.setKeepAlive(true, 60000);
-    onConnect();
+export async function connectTCP(port: number, host: string): Promise<net.Socket> {
+  return new Promise<net.Socket>((resolve, reject) => {
+    const socket = new net.Socket();
+    socket.connect(port, host, () => {
+      socket.setKeepAlive(true, 60000);
+      resolve(socket);
+    });
+    socket.on('error', (err) => reject(err));
   });
-  return socket;
 }
 
 /**
  * Connects via secure TLS.
- *
+ * 
  * @param port The port to connect to.
  * @param host The host to connect to.
  * @param tlsOptions The TLS options.
- * @param onConnect Callback invoked on success.
- * @returns The TLS socket.
+ * @returns A promise that resolves with the TLS socket.
  */
-export function connectTLS(
+export async function connectTLS(
   port: number,
   host: string,
-  tlsOptions: tls.ConnectionOptions,
-  onConnect: () => void
-): tls.TLSSocket {
-  const socket = tls.connect(port, host, tlsOptions, () => {
-    socket.setEncoding('utf-8');
-    socket.setKeepAlive(true, 60000);
-    onConnect();
+  tlsOptions: tls.ConnectionOptions
+): Promise<tls.TLSSocket> {
+  return new Promise<tls.TLSSocket>((resolve, reject) => {
+    const socket = tls.connect(port, host, tlsOptions, () => {
+      socket.setEncoding('utf-8');
+      socket.setKeepAlive(true, 60000);
+      resolve(socket);
+    });
+    socket.on('error', (err) => reject(err));
   });
-  return socket;
 }

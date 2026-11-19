@@ -162,10 +162,15 @@ flowchart LR
 - **Batching:** Flushes transmit buffered logs using chunking (batch sizes up to ~16KB) to improve throughput and reduce underlying system calls.
 - **Reconnects:** It uses an exponential backoff strategy calculated as `retry_min * (2 ** retries)`, capped at `retry_max`. If retries exceed `max_connect_retries` (and it's not set to `-1`), the stream halts gracefully, stopping further attempts and ignoring subsequent writes to avoid boundless memory exhaustion.
 
+
 ## Develop
+ 
+Requires Node.js 18+ (\`.nvmrc\` pins 18) and Yarn 1 (\`yarn.lock\` is v1 format).
+ 
+### CI/CD Notes
+**GitHub Actions are PROHIBITED.** All continuous integration runs on the central Kubernetes cluster via the orchestrator. The validation badge below refers to this internal, event-driven pipeline.
 
-Requires Node.js 18+ (`.nvmrc` pins 18) and Yarn 1 (`yarn.lock` is v1 format).
-
+### Local Workflow
 ```bash
 yarn install --frozen-lockfile   # install from yarn.lock; the prepare script also runs the build
 yarn run build                   # compile src/ to dist/ with tsc
@@ -173,6 +178,7 @@ yarn run lint                    # Biome check on src/ (yarn run lint:fix applie
 yarn run mocha                   # run the compiled tests in dist/test/
 yarn test                        # lint, then mocha under nyc with coverage
 ```
+
 
 ## Contributing
 

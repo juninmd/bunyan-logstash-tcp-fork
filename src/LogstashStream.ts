@@ -1,9 +1,14 @@
 import CBuffer from 'CBuffer';
-import safeStringify from 'fast-safe-stringify';
-import { connectTCP, connectTLS } from './connection';
-import { LogstashStreamBase } from './LogstashStreamBase';
-import type { LogstashStreamOptions } from './types';
-import { formatMessage } from './utils';
+import type net from 'node:net';
+import type tls from 'node:tls';
+import safeStringifyModule from 'fast-safe-stringify';
+import { connectTCP, connectTLS } from './connection.js';
+import { LogstashStreamBase } from './LogstashStreamBase.js';
+import type { LogstashStreamOptions } from './types.js';
+import { formatMessage } from './utils.js';
+
+// fast-safe-stringify ships CJS; under NodeNext only its shape is loose
+const safeStringify = safeStringifyModule as unknown as (value: unknown) => string;
 
 /**
  * LogstashStream implements a Bunyan stream that sends data to Logstash via TCP or TLS.
@@ -20,40 +25,30 @@ export class LogstashStream extends LogstashStreamBase {
   }
 
   /**
-   * Writes a log entry to the stream.
-   *
-   * @param entry The log entry (either a JSON string or an object).
-   */
-  public write(entry: unknown): void {
-    if (this.silent) return;
-
-    let rec: Record<string, unknown>;
-    if (typeof entry === 'string') {
-      try {
-        rec = JSON.parse(entry) as Record<string, unknown>;
-      } catch (e) {
-        this.emit('error', e);
-        return;
-      }
-    } else {
-      rec = entry as Record<string, unknown>;
-    }
-
-    const msg = formatMessage(rec, this.tags, this.source, this.pid, this.type);
-    this.send(safeStringify(msg));
-  }
-
-  /**
    * Connects to the remote Logstash server.
    */
-  public connect(): void {
+  public async connect(): Promise<void> {
     this.retries += 1;
     this.connecting = true;
 
-    const onConnectCallback = () => {
+    let socket: net.Socket | tls.TLSSocket | null;
+    try {
+      if (this.ssl_enable && this.tlsOptions) {
+        socket = await connectTLS(this.port, this.host, this.tlsOptions);
+      } else {
+        socket = await connectTCP(this.port, this.host);
+      }
+    } catch (e) {
+      this.socket = null;
       this.connecting = false;
-      this.announce();
-    };
+      process.nextTick(() => this.emit('error', e));
+      return;
+    }
+
+    this.socket = socket;
+
+    if (!this.socket) return;
+    this.socket.unref();
 
     const onError = (err: Error) => {
       this.connecting = false;
@@ -63,28 +58,19 @@ export class LogstashStream extends LogstashStreamBase {
       this.emit('error', err);
     };
 
-    try {
-      if (this.ssl_enable && this.tlsOptions) {
-        this.socket = connectTLS(this.port, this.host, this.tlsOptions, onConnectCallback);
-      } else {
-        this.socket = connectTCP(this.port, this.host, onConnectCallback);
-      }
-    } catch (e) {
-      this.socket = null;
-      this.connecting = false;
-      process.nextTick(() => this.emit('error', e));
-      return;
-    }
-
-    if (!this.socket) return;
-    this.socket.unref();
     this.socket.on('error', onError);
 
-    this.socket.on('connect', () => {
+    const onConnect = () => {
+      this.connecting = false;
       this.retries = 0;
       this.canWriteToExternalSocket = true;
+      this.announce();
       this.emit('connect');
-    });
+    };
+
+    this.socket.on('connect', onConnect);
+    // connectTCP/connectTLS only resolve once the socket is connected.
+    onConnect();
 
     this.socket.on('timeout', () => {
       if (this.socket && this.socket.readyState !== 'open') this.socket.destroy();
@@ -117,6 +103,30 @@ export class LogstashStream extends LogstashStreamBase {
   public announce(): void {
     this.connected = true;
     this.flush();
+  }
+
+  /**
+   * Writes a log entry to the stream.
+   *
+   * @param entry The log entry (either a JSON string or an object).
+   */
+  public write(entry: unknown): void {
+    if (this.silent) return;
+
+    let rec: Record<string, unknown>;
+    if (typeof entry === 'string') {
+      try {
+        rec = JSON.parse(entry) as Record<string, unknown>;
+      } catch (e) {
+        this.emit('error', e);
+        return;
+      }
+    } else {
+      rec = entry as Record<string, unknown>;
+    }
+
+    const msg = formatMessage(rec, this.tags, this.source, this.pid, this.type);
+    this.send(safeStringify(msg));
   }
 
   /**

@@ -3,8 +3,8 @@ import { EventEmitter } from 'node:events';
 import type net from 'node:net';
 import os from 'node:os';
 import type tls from 'node:tls';
-import { createTlsOptions } from './connection';
-import type { LogstashStreamOptions } from './types';
+import { createTlsOptions } from './connection.js';
+import type { LogstashStreamOptions } from './types.js';
 
 /**
  * Base class for LogstashStream handling initialization and state.
@@ -34,7 +34,7 @@ export class LogstashStreamBase extends EventEmitter {
   public ssl_key: string;
   /** Path to SSL cert */
   public ssl_cert: string;
-  /** Path to CA cert(s) */
+  /** Path(s) to CA cert(s) */
   public ca: string | string[];
   /** Passphrase for SSL key */
   public ssl_passphrase?: string;
@@ -74,6 +74,7 @@ export class LogstashStreamBase extends EventEmitter {
    */
   constructor(options?: LogstashStreamOptions) {
     super();
+
     const opts = options || {};
 
     this.name = 'bunyan';
@@ -102,6 +103,7 @@ export class LogstashStreamBase extends EventEmitter {
     this.log_queue = new CBuffer(this.cbuffer_size);
     this.connected = false;
     this.socket = null;
+
     this.retries = -1;
     this.canWriteToExternalSocket = false;
 

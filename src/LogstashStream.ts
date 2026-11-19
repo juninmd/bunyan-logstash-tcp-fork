@@ -1,9 +1,14 @@
 import CBuffer from 'CBuffer';
-import safeStringify from 'fast-safe-stringify';
-import { connectTCP, connectTLS } from './connection';
-import { LogstashStreamBase } from './LogstashStreamBase';
-import type { LogstashStreamOptions } from './types';
-import { formatMessage } from './utils';
+import safeStringifyModule from 'fast-safe-stringify';
+import type net from 'node:net';
+import type tls from 'node:tls';
+import { connectTCP, connectTLS } from './connection.js';
+import { LogstashStreamBase } from './LogstashStreamBase.js';
+import type { LogstashStreamOptions } from './types.js';
+import { formatMessage } from './utils.js';
+
+// fast-safe-stringify ships CJS; under NodeNext only its shape is loose
+const safeStringify = safeStringifyModule as unknown as (value: unknown) => string;
 
 /**
  * LogstashStream implements a Bunyan stream that sends data to Logstash via TCP or TLS.
@@ -55,14 +60,17 @@ export class LogstashStream extends LogstashStreamBase {
 
     this.socket.on('error', onError);
 
-    await new Promise<void>((resolve) => {
-      this.socket!.on('connect', () => {
-        this.retries = 0;
-        this.canWriteToExternalSocket = true;
-        this.emit('connect');
-        resolve();
-      });
-    });
+    const onConnect = () => {
+      this.connecting = false;
+      this.retries = 0;
+      this.canWriteToExternalSocket = true;
+      this.announce();
+      this.emit('connect');
+    };
+
+    this.socket.on('connect', onConnect);
+    // connectTCP/connectTLS only resolve once the socket is connected.
+    onConnect();
 
     this.socket.on('timeout', () => {
       if (this.socket && this.socket.readyState !== 'open') this.socket.destroy();

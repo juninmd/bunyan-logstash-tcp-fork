@@ -3,8 +3,8 @@ import { EventEmitter } from 'node:events';
 import type net from 'node:net';
 import os from 'node:os';
 import type tls from 'node:tls';
-import { createTlsOptions } from './connection';
-import type { LogstashStreamOptions } from './types';
+import { createTlsOptions } from './connection.js';
+import type { LogstashStreamOptions } from './types.js';
 
 /**
  * Base class for LogstashStream handling initialization and state.
@@ -85,6 +85,7 @@ export class LogstashStreamBase extends EventEmitter {
      this.application = opts.appName || process.title;
      this.pid = opts.pid || process.pid;
      this.tags = opts.tags || ['bunyan'];
+      this.type = opts.type;
 
      this.source = `${this.server}/${this.application}`;
 

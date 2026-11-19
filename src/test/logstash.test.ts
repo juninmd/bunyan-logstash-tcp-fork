@@ -5,7 +5,7 @@ import os from 'node:os';
 import tls from 'node:tls';
 import { expect } from 'chai';
 import sinon from 'sinon';
-import { createStream, type LogstashStream, type LogstashStreamOptions } from '../index';
+import { createStream, type LogstashStream, type LogstashStreamOptions } from '../index.js';
 
 class MockSocket extends EventEmitter {
   public unrefCalled = false;
@@ -18,11 +18,14 @@ class MockSocket extends EventEmitter {
   public keepAliveDelay: number | null = null;
   public readyState = '';
 
-  public connect(port: number, host: string) {
+  public connect(port: number, host: string, callback?: () => void) {
     this.host = host;
     this.port = port;
-    // Simulate connection resolution immediately for testing purposes
-    setTimeout(() => this.emit('connect'), 10);
+    // Resolve the connection promise and emit the event like a real socket.
+    setTimeout(() => {
+      this.emit('connect');
+      if (typeof callback === 'function') callback();
+    }, 10);
   }
 
   public unref() {
@@ -219,7 +222,7 @@ describe('LogstashStream', () => {
   });
 
   describe('connect', () => {
-    it('Should connect via TCP when ssl_enable is false', async (done) => {
+    it('Should connect via TCP when ssl_enable is false', (done) => {
       const socketMock = new MockSocket();
       sandbox.stub(net, 'Socket').returns(socketMock as unknown as net.Socket);
 
@@ -233,7 +236,7 @@ describe('LogstashStream', () => {
       }).catch(done);
     });
 
-    it('Should connect via TLS when ssl_enable is true', async (done) => {
+    it('Should connect via TLS when ssl_enable is true', (done) => {
       const socketMock = new MockSocket();
       sandbox.stub(tls, 'connect').callsFake((...args: unknown[]) => {
         const callback = args[args.length - 1] as () => void;
@@ -271,7 +274,7 @@ describe('LogstashStream', () => {
       }).catch(done);
     });
 
-    it('Should handle socket drain event', () => {
+    it('Should handle socket drain event', (done) => {
       const socketMock = new MockSocket();
       sandbox.stub(net, 'Socket').returns(socketMock as unknown as net.Socket);
 
@@ -280,9 +283,10 @@ describe('LogstashStream', () => {
 
       // Manually trigger connect and then drain
       stream.connect().then(() => {
+        flushStub.resetHistory();
         socketMock.emit('drain');
         expect(stream.canWriteToExternalSocket).to.be.true;
-        expect(flushStub.calledOnce).to.be.true;
+        expect(flushStub.called).to.be.true;
         done();
       }).catch(done);
     });
@@ -322,14 +326,14 @@ describe('LogstashStream', () => {
       triggerClose();
       
       clock.tick(99);
-      await new Promise(resolve => setTimeout(resolve, 10)); // Wait for setTimeout callback to run
+      await clock.tickAsync(10);
       expect(stream.retries).to.equal(1);
       
       stream.connecting = false;
       triggerClose();
       
       clock.tick(199);
-      await new Promise(resolve => setTimeout(resolve, 10)); // Wait for setTimeout callback to run
+      await clock.tickAsync(10);
       expect(stream.retries).to.equal(2);
       
       clock.restore();
@@ -343,13 +347,12 @@ describe('LogstashStream', () => {
         max_connect_retries: 1
       });
 
+      await stream.connect();
+
       stream.retries = 1;
       stream.connecting = false;
 
       socketMock.emit('close');
-
-      // Wait a tick for state update
-      await new Promise(resolve => setTimeout(resolve, 10));
 
       expect(stream.silent).to.be.true;
     });

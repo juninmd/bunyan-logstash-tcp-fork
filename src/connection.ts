@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import net from 'node:net';
 import tls from 'node:tls';
-import type { LogstashStreamOptions } from './types';
+import type { LogstashStreamOptions } from './types.js';
 
 /**
  * Creates TLS options from the configuration.

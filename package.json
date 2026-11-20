@@ -2,7 +2,10 @@
   "name": "bunyan-logstash-tcp-fork",
   "description": "Logstash TCP plugin for Bunyan",
   "version": "1.0.0",
-  "repository": "https://github.com/juninmd/bunyan-logstash-tcp-fork.git",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/juninmd/bunyan-logstash-tcp-fork.git"
+  },
   "homepage": "https://github.com/juninmd/bunyan-logstash-tcp-fork",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -25,15 +28,15 @@
   "devDependencies": {
     "@biomejs/biome": "^2.6.6",
     "@types/bunyan": "^1.8.11",
-    "@types/chai": "4",
-    "@types/mocha": "^10.0.10",
-    "@types/node": "^26.6.6",
-    "@types/sinon": "^22.0.0",
+    "@types/chai": "4.3.20",
+    "@types/mocha": "10.0.10",
+    "@types/node": "26.6.6",
+    "@types/sinon": "22.0.2",
     "bunyan": "1.x",
-    "chai": "4",
-    "mocha": "^10",
-    "nyc": "^17",
-    "sinon": "^22.1.0",
+    "chai": "4.5.0",
+    "mocha": "10.8.2",
+    "nyc": "17.1.0",
+    "sinon": "22.1.0",
     "ts-node": "10.9.2",
     "typescript": "7.0.2"
   },
@@ -41,16 +44,22 @@
     "node": ">= 18.0.0"
   },
   "scripts": {
-    "test": "yarn run lint && yarn run coverage",
-    "lint": "biome check src",
-    "lint:fix": "biome check --write src",
+    "test": "npm run lint && npm run coverage",
+    "lint": "npx biome check src",
+    "lint:fix": "npx biome check --write src",
     "coverage": "LOGGER_LEVEL=fatal nyc mocha dist/test/*.test.js",
     "mocha": "mocha dist/test/*.test.js",
     "build": "tsc",
-    "prepare": "yarn run build"
+    "prepare": ""
   },
   "files": [
     "dist"
   ],
-  "type": "module"
+  "type": "module",
+  "directories": {
+    "example": "example"
+  },
+  "bugs": {
+    "url": "https://github.com/juninmd/bunyan-logstash-tcp-fork/issues"
+  }
 }

@@ -13,7 +13,7 @@ export function getTimestamp(time: unknown): string {
       return new Date(time).toISOString();
     }
     return new Date().toISOString();
-  } catch (_error) {
+  } catch {
     // If time is invalid, default to now
     return new Date().toISOString();
   }
@@ -55,17 +55,16 @@ export function formatMessage(
   pid: number,
   type?: string
 ): Record<string, unknown> {
-  let level = rec.level;
-  if (typeof level === 'number' && levels.has(level)) {
-    level = levels.get(level);
-  }
+  const level = rec.level as number | string | undefined;
+  const resolvedLevel =
+    typeof level === 'number' && levels.has(level) ? levels.get(level) : level;
 
   const msg: Record<string, unknown> = {
     '@timestamp': getTimestamp(rec.time),
     message: rec.msg,
     tags,
     source,
-    level,
+    level: resolvedLevel ?? rec.level,
     pid
   };
 
@@ -73,7 +72,8 @@ export function formatMessage(
 
   const keys = Object.keys(rec);
   for (let i = 0; i < keys.length; i += 1) {
-    if (!IGNORED_KEYS[keys[i]]) msg[keys[i]] = rec[keys[i]];
+    const key = keys[i];
+    if (!IGNORED_KEYS[key]) msg[key] = rec[key];
   }
 
   return msg;

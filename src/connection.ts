@@ -14,17 +14,13 @@ export function createTlsOptions(opts: LogstashStreamOptions): tls.ConnectionOpt
     return {
       key: opts.ssl_key ? fs.readFileSync(opts.ssl_key) : undefined,
       cert: opts.ssl_cert ? fs.readFileSync(opts.ssl_cert) : undefined,
-      passphrase: opts.ssl_passphrase ? opts.ssl_passphrase : undefined,
+      passphrase: opts.ssl_passphrase ?? undefined,
       ca: Array.isArray(opts.ca)
         ? opts.ca.map((filePath) => fs.readFileSync(filePath))
-        : opts.ca
-          ? [fs.readFileSync(opts.ca as string)]
-          : undefined
+        : opts.ca ? [fs.readFileSync(opts.ca as string)] : undefined
     };
-  } catch (err: unknown) {
-    throw new Error(
-      `Failed to load SSL/TLS certificates: ${err instanceof Error ? err.message : String(err)}`
-    );
+  } catch {
+    throw new Error('Failed to load SSL/TLS certificates');
   }
 }
 

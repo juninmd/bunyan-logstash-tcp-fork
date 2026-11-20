@@ -59,7 +59,7 @@ export class LogstashStream extends LogstashStreamBase {
       this.emit('error', err);
     };
 
-    this.socket!.addEventListener('error', onError);
+    this.socket!.addListener('error', onError);
 
     const onConnect = () => {
       this.connecting = false;
@@ -69,21 +69,21 @@ export class LogstashStream extends LogstashStreamBase {
       this.emit('connect');
     };
 
-    this.socket!.addEventListener('connect', onConnect);
+    this.socket!.addListener('connect', onConnect);
     // connectTCP/connectTLS only resolve once the socket is connected.
     onConnect();
 
-    this.socket!.addEventListener('timeout', () => {
+    this.socket!.addListener('timeout', () => {
       if (this.socket?.readyState !== 'open') this.socket!.destroy();
       this.emit('timeout');
     });
 
-    this.socket!.addEventListener('drain', () => {
+    this.socket!.addListener('drain', () => {
       this.canWriteToExternalSocket = true;
       this.flush();
     });
 
-    this.socket!.addEventListener('close', () => {
+    this.socket!.addListener('close', () => {
       this.connected = false;
       if (this.max_connect_retries < 0 || this.retries < this.max_connect_retries) {
         if (!this.connecting) {

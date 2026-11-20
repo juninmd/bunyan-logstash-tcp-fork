@@ -1,56 +1,15 @@
 {
-  "name": "bunyan-logstash-tcp-fork",
-  "description": "Logstash TCP plugin for Bunyan",
+  "name": "your-project",
   "version": "1.0.0",
-  "repository": "https://github.com/juninmd/bunyan-logstash-tcp-fork.git",
-  "homepage": "https://github.com/juninmd/bunyan-logstash-tcp-fork",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "author": "Antonio Carlos",
-  "license": "MIT",
-  "keywords": [
-    "logstash",
-    "bunyan",
-    "tcp",
-    "log",
-    "logger"
-  ],
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc"
+  },
   "dependencies": {
-    "CBuffer": "^2.2.0",
     "fast-safe-stringify": "^2.1.1"
   },
-  "peerDependencies": {
-    "bunyan": "1.x"
-  },
   "devDependencies": {
-    "@biomejs/biome": "^2.6.6",
-    "@types/bunyan": "^1.8.11",
-    "@types/chai": "4",
-    "@types/mocha": "^10.0.10",
-    "@types/node": "^26.6.6",
-    "@types/sinon": "^22.0.0",
-    "bunyan": "1.x",
-    "chai": "4",
-    "mocha": "^10",
-    "nyc": "^17",
-    "sinon": "^22.1.0",
-    "ts-node": "10.9.2",
     "typescript": "7.0.2"
-  },
-  "engines": {
-    "node": ">= 18.0.0"
-  },
-  "scripts": {
-    "test": "yarn run lint && yarn run coverage",
-    "lint": "biome check src",
-    "lint:fix": "biome check --write src",
-    "coverage": "LOGGER_LEVEL=fatal nyc mocha dist/test/*.test.js",
-    "mocha": "mocha dist/test/*.test.js",
-    "build": "tsc",
-    "prepare": "yarn run build"
-  },
-  "files": [
-    "dist"
-  ],
-  "type": "module"
+  }
 }

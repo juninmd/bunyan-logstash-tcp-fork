@@ -7,11 +7,11 @@ import { createTlsOptions } from './connection.js';
 import type { LogstashStreamOptions } from './types.js';
 
 /**
- * Base class for LogstashStream handling initialization and state.
+ * Base class for LogstashStream handling state and configuration.
  */
 export class LogstashStreamBase extends EventEmitter {
   /** The name of the stream (typically 'bunyan') */
-  public name: string;
+  public name: string = 'bunyan';
   /** The log level */
   public level: string;
   /** The server name */
@@ -45,13 +45,13 @@ export class LogstashStreamBase extends EventEmitter {
   /** Queue of unwritten messages */
   public log_queue: CBuffer<string>;
   /** Connection state */
-  public connected: boolean;
+  public connected: boolean = false;
   /** The underlying socket */
-  public socket: net.Socket | tls.TLSSocket | null;
+  public socket: net.Socket | tls.TLSSocket | null = null;
   /** Current connection retries */
-  public retries: number;
+  public retries: number = -1;
   /** Indicates if we can write to socket (waiting for drain) */
-  public canWriteToExternalSocket: boolean;
+  public canWriteToExternalSocket: boolean = false;
   /** Pre-computed source field */
   public source: string;
   /** Max allowed retries */
@@ -63,9 +63,9 @@ export class LogstashStreamBase extends EventEmitter {
   /** Maximum delay for exponential backoff */
   public retry_max: number;
   /** Whether the stream is actively trying to connect */
-  public connecting: boolean;
+  public connecting: boolean = false;
   /** Whether the stream has gone permanently silent due to exhausted retries */
-  public silent: boolean;
+  public silent: boolean = false;
 
   /**
    * Initializes the stream state from options.
@@ -77,42 +77,33 @@ export class LogstashStreamBase extends EventEmitter {
 
     const opts = options || {};
 
-    this.name = 'bunyan';
-    this.level = opts.level || 'info';
-    this.server = opts.server || os.hostname();
-    this.host = opts.host || '127.0.0.1';
-    this.port = opts.port || 9999;
-    this.application = opts.appName || process.title;
-    this.pid = opts.pid || process.pid;
-    this.tags = opts.tags || ['bunyan'];
+    this.level = opts.level ?? 'info';
+    this.server = opts.server ?? os.hostname();
+    this.host = opts.host ?? '127.0.0.1';
+    this.port = opts.port ?? 9999;
+    this.application = opts.appName ?? process.title;
+    this.pid = opts.pid ?? process.pid;
+    this.tags = opts.tags ?? ['bunyan'];
     this.type = opts.type;
 
     this.source = `${this.server}/${this.application}`;
 
-    this.ssl_enable = opts.ssl_enable || false;
-    this.ssl_key = opts.ssl_key || '';
-    this.ssl_cert = opts.ssl_cert || '';
-    this.ca = opts.ca || '';
-    this.ssl_passphrase = opts.ssl_passphrase || '';
+    this.ssl_enable = opts.ssl_enable ?? false;
+    this.ssl_key = opts.ssl_key ?? '';
+    this.ssl_cert = opts.ssl_cert ?? '';
+    this.ca = opts.ca ?? '';
+    this.ssl_passphrase = opts.ssl_passphrase ?? '';
 
     if (this.ssl_enable) {
       this.tlsOptions = createTlsOptions(opts);
     }
 
-    this.cbuffer_size = opts.cbuffer_size || 10;
+    this.cbuffer_size = opts.cbuffer_size ?? 10;
     this.log_queue = new CBuffer(this.cbuffer_size);
-    this.connected = false;
-    this.socket = null;
-
-    this.retries = -1;
-    this.canWriteToExternalSocket = false;
-
-    this.max_connect_retries =
-      typeof opts.max_connect_retries === 'number' ? opts.max_connect_retries : 4;
-    this.retry_interval = opts.retry_interval || 100;
-    this.retry_min = opts.retry_min || this.retry_interval || 100;
-    this.retry_max = opts.retry_max || 10000;
-    this.connecting = false;
-    this.silent = false;
+    
+    this.max_connect_retries = opts.max_connect_retries ?? 4;
+    this.retry_interval = opts.retry_interval ?? 100;
+    this.retry_min = opts.retry_min ?? this.retry_interval ?? 100;
+    this.retry_max = opts.retry_max ?? 10000;
   }
 }

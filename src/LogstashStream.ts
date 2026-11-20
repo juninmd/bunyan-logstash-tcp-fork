@@ -21,7 +21,7 @@ export class LogstashStream extends LogstashStreamBase {
    */
   constructor(options?: LogstashStreamOptions) {
     super(options);
-    this.connect();
+    // Connection is handled explicitly via connect(), but we store state from constructor
   }
 
   /**
@@ -41,6 +41,7 @@ export class LogstashStream extends LogstashStreamBase {
     } catch (e) {
       this.socket = null;
       this.connecting = false;
+      // Emit error asynchronously to avoid crashing the process synchronously
       process.nextTick(() => this.emit('error', e));
       return;
     }
@@ -58,7 +59,7 @@ export class LogstashStream extends LogstashStreamBase {
       this.emit('error', err);
     };
 
-    this.socket.on('error', onError);
+    this.socket!.addListener('error', onError);
 
     const onConnect = () => {
       this.connecting = false;
@@ -68,21 +69,21 @@ export class LogstashStream extends LogstashStreamBase {
       this.emit('connect');
     };
 
-    this.socket.on('connect', onConnect);
+    this.socket!.addListener('connect', onConnect);
     // connectTCP/connectTLS only resolve once the socket is connected.
     onConnect();
 
-    this.socket.on('timeout', () => {
-      if (this.socket && this.socket.readyState !== 'open') this.socket.destroy();
+    this.socket!.addListener('timeout', () => {
+      if (this.socket?.readyState !== 'open') this.socket!.destroy();
       this.emit('timeout');
     });
 
-    this.socket.on('drain', () => {
+    this.socket!.addListener('drain', () => {
       this.canWriteToExternalSocket = true;
       this.flush();
     });
 
-    this.socket.on('close', () => {
+    this.socket!.addListener('close', () => {
       this.connected = false;
       if (this.max_connect_retries < 0 || this.retries < this.max_connect_retries) {
         if (!this.connecting) {
@@ -140,7 +141,7 @@ export class LogstashStream extends LogstashStreamBase {
     if (!this.socket) return false;
     try {
       const result = this.socket.write(payload);
-      if (!result) this.canWriteToExternalSocket = false;
+      if (result === false) this.canWriteToExternalSocket = false;
       return result;
     } catch (e) {
       this.emit('error', e);

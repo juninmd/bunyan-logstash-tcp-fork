@@ -28,7 +28,7 @@ yarn test             # Lint + coverage (nyc + mocha)
 
 ## CI/CD Pipeline (Central Orchestrator)
 
-All CI/CD runs on the internal Kubernetes cluster via the central orchestrator (`juninmd/base-actions`). GitHub Actions workflows are **not** used in this repository.
+All CI/CD runs on the internal Kubernetes cluster via the central orchestrator (`juninmd/base-actions`). **GitHub Actions workflows are PROHIBITED** in this repository.
 
 ### Pipeline Stages
 

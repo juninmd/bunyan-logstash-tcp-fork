@@ -5,7 +5,7 @@ import os from 'node:os';
 import tls from 'node:tls';
 import { expect } from 'chai';
 import sinon from 'sinon';
-import { createStream, type LogstashStream, type LogstashStreamOptions } from '../index.js';
+import { createStream, type LogstashStream, type LogstashStreamOptions } from '../index';
 
 class MockSocket extends EventEmitter {
   public unrefCalled = false;

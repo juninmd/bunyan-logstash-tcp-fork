@@ -2,10 +2,10 @@ import CBuffer from 'CBuffer';
 import type net from 'node:net';
 import type tls from 'node:tls';
 import safeStringifyModule from 'fast-safe-stringify';
-import { connectTCP, connectTLS } from './connection.js';
-import { LogstashStreamBase } from './LogstashStreamBase.js';
-import type { LogstashStreamOptions } from './types.js';
-import { formatMessage } from './utils.js';
+import { connectTCP, connectTLS } from './connection';
+import { LogstashStreamBase } from './LogstashStreamBase';
+import type { LogstashStreamOptions } from './types';
+import { formatMessage } from './utils';
 
 // fast-safe-stringify ships CJS; under NodeNext only its shape is loose
 const safeStringify = safeStringifyModule as unknown as (value: unknown) => string;

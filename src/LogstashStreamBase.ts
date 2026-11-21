@@ -4,7 +4,7 @@ import type net from 'node:net';
 import os from 'node:os';
 import type tls from 'node:tls';
 import { createTlsOptions } from './connection.js';
-import type { LogstashStreamOptions } from './types.js';
+import type { LogstashStreamOptions } from './types';
 
 /**
  * Base class for LogstashStream handling state and configuration.

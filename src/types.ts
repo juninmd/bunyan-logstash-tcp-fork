@@ -35,4 +35,6 @@ export interface LogstashStreamOptions {
   retry_min?: number;
   /** Maximum interval in ms between retries. Defaults to `10000`. */
   retry_max?: number;
+  /** TLS options (configured automatically if ssl_enable is true). */
+  tlsOptions?: tls.ConnectionOptions;
 }

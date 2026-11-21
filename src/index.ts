@@ -1,5 +1,5 @@
-import { LogstashStream } from './LogstashStream.js';
-import type { LogstashStreamOptions } from './types.js';
+import { LogstashStream } from './LogstashStream';
+import type { LogstashStreamOptions } from './types';
 
 export type { LogstashStreamOptions };
 export { LogstashStream };

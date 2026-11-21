@@ -5,18 +5,10 @@
  * @returns The ISO string timestamp.
  */
 export function getTimestamp(time: unknown): string {
-  try {
-    if (time instanceof Date) {
-      return time.toISOString();
-    }
-    if (typeof time === 'string') {
-      return new Date(time).toISOString();
-    }
-    return new Date().toISOString();
-  } catch {
-    // If time is invalid, default to now
-    return new Date().toISOString();
-  }
+  // Use optional chaining and nullish coalescing for modern syntax
+  const date = time instanceof Date ? time : typeof time === 'string' ? new Date(time) : undefined;
+  // Nullish coalescing: default to now if date is null/undefined
+  return (date ?? new Date()).toISOString();
 }
 
 export const levels = new Map<number, string>([
@@ -59,21 +51,23 @@ export function formatMessage(
   const resolvedLevel =
     typeof level === 'number' && levels.has(level) ? levels.get(level) : level;
 
+  // Use object spread and conditional property
   const msg: Record<string, unknown> = {
     '@timestamp': getTimestamp(rec.time),
     message: rec.msg,
     tags,
     source,
     level: resolvedLevel ?? rec.level,
-    pid
+    pid,
+    // Only add type if provided
+    ...(typeof type === 'string' && { type })
   };
 
-  if (typeof type === 'string') msg.type = type;
-
-  const keys = Object.keys(rec);
-  for (let i = 0; i < keys.length; i += 1) {
-    const key = keys[i];
-    if (!IGNORED_KEYS[key]) msg[key] = rec[key];
+  // Use for...of with Object.entries for modern iteration
+  for (const [key, value] of Object.entries(rec)) {
+    if (!IGNORED_KEYS[key]) {
+      msg[key] = value;
+    }
   }
 
   return msg;

@@ -11,7 +11,7 @@ const log = bunyan.createLogger({
     },
     {
       level: 'debug',
-      type: "raw",
+      type: 'raw',
       stream: createStream({
         host: '127.0.0.1',
         port: 9998

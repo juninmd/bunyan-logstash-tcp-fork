@@ -7,7 +7,20 @@
   "dependencies": {
     "fast-safe-stringify": "^2.1.1"
   },
+  "scripts": {
+    "lint": "biome check --apply",
+    "format": "biome check --apply",
+    "typecheck": "tsc --noEmit",
+    "test": "npx mocha src/test/**/*.ts --reporter spec"
+  },
   "devDependencies": {
+    "@types/chai": "*",
+    "@types/mocha": "*",
+    "@types/sinon": "*",
+    "biome": "latest",
+    "chai": "latest",
+    "mocha": "latest",
+    "sinon": "latest",
     "typescript": "7.0.2"
   }
 }
